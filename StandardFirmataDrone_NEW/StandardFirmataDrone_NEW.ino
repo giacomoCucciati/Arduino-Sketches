@@ -65,10 +65,9 @@ int stallPow6Vec_[50];
 int stallPow7Vec_[50];
 
 double averageTime = 0;
-int avarageCounter = 0;
+int averageCounter = 0;
 int averageNum = 10;
-int printCounter = 0;
-int dtCounter = 0;
+
 /*==============================================================================
  * GLOBAL VARIABLES
  *============================================================================*/
@@ -866,6 +865,9 @@ void applyKalman()
     gyroXangle = kalAngleX;
   if (gyroYangle < -180 || gyroYangle > 180)
     gyroYangle = kalAngleY;
+
+  if(timeToStall_) correctEngineToStall();
+  if(printValues_) printEnginesAndAngles();
 }
 
 void initSensorsAndKalman()
@@ -962,15 +964,6 @@ void setEnginesTo(int value){
 
 }
 
-void setPedestals(int value){
-
-  stallPow2_ = value;
-  stallPow3_ = value;
-  stallPow6_ = value;
-  stallPow7_ = value;
-
-}
-
 void printEnginesAndAngles(){
   String theMessage = String(pinState[2]);
   theMessage += " ";
@@ -991,14 +984,14 @@ void printEnginesAndAngles(){
   theMessage += String(compAngleX);
   theMessage += " ";
   theMessage += String(compAngleY);
+  theMessage += " ";
+  theMessage += String(averageTime*averageNum);
   delay(10);
   Firmata.sendString(theMessage.c_str());
 }
 
 void correctEngineToStall(){
 
-  //I "+" devono essere corretti con i primi test.
-  //La meta' deve trasformarsi in "-"... in teoria. 
   int value2 = stallPow2_ - (int)kalAngleX + (int)kalAngleY;
   int value3 = stallPow3_ + (int)kalAngleX + (int)kalAngleY;
   int value6 = stallPow6_ + (int)kalAngleX - (int)kalAngleY;
@@ -1008,11 +1001,7 @@ void correctEngineToStall(){
   setEngine3To(value3);
   setEngine6To(value6);
   setEngine7To(value7);
-  if(printCounter % 10 == 0){
-    if(printValues_) printEnginesAndAngles(); 
-    printCounter = 1;
-  }
-  printCounter ++;
+  
 }
 
 void increasePedestals(){
@@ -1039,6 +1028,15 @@ void savePedestals(int counter){
   stallPow3Vec_[counter] = stallPow3_;
   stallPow6Vec_[counter] = stallPow6_;
   stallPow7Vec_[counter] = stallPow7_;
+}
+
+void setPedestals(int value){
+
+  stallPow2_ = value;
+  stallPow3_ = value;
+  stallPow6_ = value;
+  stallPow7_ = value;
+
 }
 
 void setPedestals(){
@@ -1200,7 +1198,6 @@ void loop()
     Firmata.processInput();
   
   applyKalman();
-  if(timeToStall_) correctEngineToStall();
   if(timeToTakeOff_) takeOff();
   
   currentMillis = millis();
