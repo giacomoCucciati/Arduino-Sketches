@@ -50,7 +50,7 @@
 // the minimum interval for sampling analog input
 #define MINIMUM_SAMPLING_INTERVAL 10
 
-//Da definire i valori di stallo dei singoli motori. 
+//Da definire i valori di stallo dei singoli motori.
 //Non potranno essere zero.
 int stallPow2_ = 285;
 int stallPow3_ = 285;
@@ -67,7 +67,7 @@ int stallPow7Vec_[50];
 double averageTime = 0;
 int averageCounter = 0;
 int averageNum = 25;
-double baseAngleX = 0; 
+double baseAngleX = 0;
 double baseAngleY = 0;
 /*==============================================================================
  * GLOBAL VARIABLES
@@ -77,7 +77,7 @@ boolean printValues_ = false;
 boolean timeToStall_ = false;
 boolean timeToTakeOff_ = false;
 /* Accelerometer & Gyroscope */
-Adafruit_ADXL345_Unified accel; 
+Adafruit_ADXL345_Unified accel;
 L3G4200D gyroscope;
 /* Accelerometer and gyro variables */
 // Timers
@@ -87,12 +87,13 @@ unsigned long timer = 0;
 #define RESTRICT_PITCH // Comment out to restrict roll to ±90deg instead - please read: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf
 
 // Create the Kalman instances
-Kalman kalmanX; 
+Kalman kalmanX;
 Kalman kalmanY;
 
 /* IMU Data */
 double accX, accY, accZ;
 double gyroX, gyroY, gyroZ;
+double gyroXrate, gyroYrate, gyroZrate;
 double pitch, roll;
 
 double gyroXangle, gyroYangle; // Angle calculate using the gyro only
@@ -367,7 +368,7 @@ void setPinModeCallback(byte pin, int mode)
 void setMyTimersRegisters(void) {
   //D2, D3 controleld by Timer 3
   TCCR3A = _BV(WGM31) | _BV(WGM30);
-  TCCR3B = _BV(WGM32) | _BV(CS31) | _BV(CS30); 
+  TCCR3B = _BV(WGM32) | _BV(CS31) | _BV(CS30);
   //D6, D7 controleld by Timer 4
   TCCR4A = _BV(WGM41) | _BV(WGM40);
   TCCR4B = _BV(WGM42) | _BV(CS41) | _BV(CS40);
@@ -762,7 +763,7 @@ void systemResetCallback()
   isResetting = false;
 }
 
-void applyKalman() 
+void applyKalman()
 {
   // New part, average
   if(averageCounter == 0) {
@@ -772,10 +773,10 @@ void applyKalman()
     gyroX = 0;
     gyroY = 0;
     gyroZ = 0;
-    averageTime = 0; 
+    averageTime = 0;
   }
 
-  sensors_event_t event; 
+  sensors_event_t event;
   accel.getEvent(&event);
   accX += event.acceleration.x;
   accY += event.acceleration.y;
@@ -785,7 +786,7 @@ void applyKalman()
   gyroX += norm.XAxis;
   gyroY += norm.YAxis;
   gyroZ += norm.ZAxis;
-  
+
   double dt = (double)(micros() - timer);
   dt = dt/1000000;
   timer = micros();
@@ -797,7 +798,7 @@ void applyKalman()
     return;
   }
 
-// Arduino will execute the following lines only if 
+// Arduino will execute the following lines only if
 // averageNum of measurements have been taken.
   accX = accX / averageNum;
   accY = accY / averageNum;
@@ -806,9 +807,9 @@ void applyKalman()
   gyroX = gyroX / averageNum;
   gyroY = gyroY / averageNum;
   gyroZ = gyroZ / averageNum;
-   
+
   averageCounter = 0;
-  
+
   // Source: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf eq. 25 and eq. 26
   // atan2 outputs the value of -π to π (radians) - see http://en.wikipedia.org/wiki/Atan2
   // It is then converted from radians to degrees
@@ -820,8 +821,8 @@ void applyKalman()
    pitch = atan2(-accX, accZ) * RAD_TO_DEG;
 #endif
 
-  double gyroXrate = gyroX / 131.0; // Convert to deg/s
-  double gyroYrate = gyroY / 131.0; // Convert to deg/s
+  gyroXrate = gyroX / 131.0; // Convert to deg/s
+  gyroYrate = gyroY / 131.0; // Convert to deg/s
 
 #ifdef RESTRICT_PITCH
   // This fixes the transition problem when the accelerometer angle jumps between -180 and 180 degrees
@@ -883,12 +884,12 @@ void initSensorsAndKalman()
   // Calibrate gyroscope. The calibration must be at rest.
   // If you don't want calibrate, comment this line.
   gyroscope.calibrate(100);
-  
+
   //Initialize accelerometer
   accel = Adafruit_ADXL345_Unified(12345);
   if(!accel.begin())
   {
-    // There was a problem detecting the ADXL345 ... check your connections 
+    // There was a problem detecting the ADXL345 ... check your connections
     Serial.println("Ooops, no ADXL345 detected ... Check your wiring!");
     while(1);
   }
@@ -896,10 +897,10 @@ void initSensorsAndKalman()
   //displaySensorDetails();
   //displayDataRate();
   //displayRange();
-  
+
   //From Kalman example
   delay(100);
-  sensors_event_t event; 
+  sensors_event_t event;
   accel.getEvent(&event);
   accX = event.acceleration.x;
   accY = event.acceleration.y;
@@ -926,15 +927,15 @@ void initSensorsAndKalman()
 void setEngine2To(int value){
   // pin 2
   sbi(TCCR3A, COM3B1);
-  OCR3B = value;  
+  OCR3B = value;
   pinState[2] = value;
- 
+
 }
 
 void setEngine3To(int value){
   // pin 3
   sbi(TCCR3A, COM3C1);
-  OCR3C = value; 
+  OCR3C = value;
   pinState[3] = value;
 
 }
@@ -1000,6 +1001,12 @@ void correctEngineToStall(){
   int value3 = stallPow3_ + (int)kalAlCorX + (int)kalAlCorY;
   int value6 = stallPow6_ + (int)kalAlCorX - (int)kalAlCorY;
   int value7 = stallPow7_ - (int)kalAlCorX - (int)kalAlCorY;
+
+  value2 +=  -(int)gyroXrate + (int)gyroYrate;
+  value3 +=  (int)gyroXrate + (int)gyroYrate;
+  value6 +=  (int)gyroXrate - (int)gyroYrate;
+  value7 +=  -(int)gyroXrate - (int)gyroYrate;
+
   /*int value2 = stallPow2_ - (int)compAngleX + (int)compAngleY;
   int value3 = stallPow3_ + (int)compAngleX + (int)compAngleY;
   int value6 = stallPow6_ + (int)compAngleX - (int)compAngleY;
@@ -1009,7 +1016,7 @@ void correctEngineToStall(){
   setEngine3To(value3);
   setEngine6To(value6);
   setEngine7To(value7);
-  
+
 }
 
 void increasePedestals(){
@@ -1018,7 +1025,7 @@ void increasePedestals(){
   stallPow3_ += 1;
   stallPow6_ += 1;
   stallPow7_ += 1;
-  
+
 }
 
 void decreasePedestals(){
@@ -1027,11 +1034,11 @@ void decreasePedestals(){
   stallPow3_ -= 1;
   stallPow6_ -= 1;
   stallPow7_ -= 1;
-  
+
 }
 
 void savePedestals(int counter){
-  
+
   stallPow2Vec_[counter] = stallPow2_;
   stallPow3Vec_[counter] = stallPow3_;
   stallPow6Vec_[counter] = stallPow6_;
@@ -1062,7 +1069,7 @@ void setPedestals(){
     stallPow6_ += stallPow6Vec_[i];
     stallPow7_ += stallPow7Vec_[i];
   }
-  
+
   stallPow2_ = stallPow2_/numPedestals_;
   stallPow3_ = stallPow3_/numPedestals_;
   stallPow6_ = stallPow6_/numPedestals_;
@@ -1079,7 +1086,7 @@ void takeOff(){
   int counterDelay = 0;
   // Inizia il loop di calibrazione pedestals
   while(timeToTakeOff_){
-    
+
     String theMessage = "Angolo totale maggiore di 5";
     // Controllo sempre possibili messaggi esterni
     while (Firmata.available())
@@ -1092,10 +1099,10 @@ void takeOff(){
     if(counterDelay > 100) {
       // Calcolo angolo totale rispetto alla verticale
       double angoloTot = acos(cos(kalAngleX * 71 / 4068) * cos(kalAngleY * 71 / 4068));
-    
-      // Se l'angolo complessivo e' minore di 5 gradi 
+
+      // Se l'angolo complessivo e' minore di 5 gradi
       // procedi con il calcolo dei pedestal
-      if(angoloTot < 0.087) { 
+      if(angoloTot < 0.087) {
         // Effettuo la misura di distanza
         // Porto bassa l'uscita del trigger
         digitalWrite( triggerPort, LOW );
@@ -1107,16 +1114,16 @@ void takeOff(){
         distanza_dopo = 0.034 * durata / 2;
         // Distanza corretta per la rotazione su x e y
         // distanza_dopo = distanza_dopo * cos(kalAngleX) * cos(kalAngleY);
- 
-      
+
+
          //dopo 38ms è fuori dalla portata del sensore
         if( durata > 38000 ){
           theMessage = "Fuori portata";
           // Il drone e' volato via? Effettuare un tentativo di atterraggio
           // lanciando una funzione apposita:
           // landing();
-        } else{ 
-      
+        } else{
+
           if (distanza_dopo < 20){ // Il drone non ha ancora raggiunto la quota di calibrazione
             if (distanza_dopo > distanza_prima) {
               //Nothing to do
@@ -1149,22 +1156,22 @@ void takeOff(){
           timeToTakeOff_ = false;
         }
       } //End of if (angolo minore di 5 gradi)
-      counterDelay = 0;  
+      counterDelay = 0;
     } //End of if (counter delay)
     if(printValues_) Firmata.sendString(theMessage.c_str());
     delay(1);
   }//End of the while
-  
+
 }
 
 void setStartingAngle()
 {
-  
+
   int tempCounter = 0;
   while (1){
     applyKalman();
     if (averageCounter == 0){
-      baseAngleX += kalAngleX; 
+      baseAngleX += kalAngleX;
       baseAngleY += kalAngleY;
       tempCounter += 1;
     }
@@ -1174,7 +1181,7 @@ void setStartingAngle()
       return;
     }
   }
-  
+
 }
 
 
@@ -1200,7 +1207,7 @@ void setup()
   // then comment out or remove lines 701 - 704 below
 
   Firmata.begin(57600);
-  
+
   //Set arduino timers to increase control on PWM
 
   setMyTimersRegisters();
@@ -1212,7 +1219,7 @@ void setup()
   initSensorsAndKalman();
   setStartingAngle();
   digitalWrite(12, LOW);
-  
+
 }
 
 /*==============================================================================
@@ -1230,10 +1237,10 @@ void loop()
    * checking digital inputs.  */
   while (Firmata.available())
     Firmata.processInput();
-  
+
   applyKalman();
   if(timeToTakeOff_) takeOff();
-  
+
   currentMillis = millis();
   if (currentMillis - previousMillis > samplingInterval) {
     previousMillis += samplingInterval;
