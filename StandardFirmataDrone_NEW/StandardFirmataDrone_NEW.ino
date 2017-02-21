@@ -83,6 +83,10 @@ L3G4200D gyroscope;
 // Timers
 unsigned long timer = 0;
 
+//weight and Fstep
+double weight = 1.56;
+double Fstep = weight / (4*350);
+
 /* From Kalman example */
 #define RESTRICT_PITCH // Comment out to restrict roll to ±90deg instead - please read: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf
 
@@ -1006,6 +1010,15 @@ void correctEngineToStall(){
   value3 +=  (int)gyroXrate + (int)gyroYrate;
   value6 +=  (int)gyroXrate - (int)gyroYrate;
   value7 +=  -(int)gyroXrate - (int)gyroYrate;
+
+  //double angleFactor = cos(kalAlCorX * PI / 180.0) * cos(kalAlCorY * PI / 180.0);
+  //double deltaForce = weight/angleFactor - ((value2+value3+value6+value7)*Fstep) ;
+  //deltaW = int(deltaForce / (4 * Fstep));
+
+  //value2 += deltaW;
+  //value3 += deltaW;
+  //value6 += deltaW;
+  //value7 += deltaW;
 
   /*int value2 = stallPow2_ - (int)compAngleX + (int)compAngleY;
   int value3 = stallPow3_ + (int)compAngleX + (int)compAngleY;
