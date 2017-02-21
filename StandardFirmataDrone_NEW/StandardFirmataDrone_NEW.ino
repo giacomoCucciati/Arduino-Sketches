@@ -66,8 +66,9 @@ int stallPow7Vec_[50];
 
 double averageTime = 0;
 int averageCounter = 0;
-int averageNum = 10;
-
+int averageNum = 25;
+double baseAngleX = 0; 
+double baseAngleY = 0;
 /*==============================================================================
  * GLOBAL VARIABLES
  *============================================================================*/
@@ -806,7 +807,6 @@ void applyKalman()
   gyroY = gyroY / averageNum;
   gyroZ = gyroZ / averageNum;
    
-  averageTime = averageTime / averageNum;
   averageCounter = 0;
   
   // Source: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf eq. 25 and eq. 26
@@ -965,6 +965,8 @@ void setEnginesTo(int value){
 }
 
 void printEnginesAndAngles(){
+  double kalAlCorX = kalAngleX - baseAngleX;
+  double kalAlCorY = kalAngleY - baseAngleY;
   String theMessage = String(pinState[2]);
   theMessage += " ";
   theMessage += String(pinState[3]);
@@ -977,25 +979,31 @@ void printEnginesAndAngles(){
   theMessage += " ";
   theMessage += String(kalAngleY);
   theMessage += " ";
-  theMessage += String(gyroXangle);
+  theMessage += String(baseAngleX);
   theMessage += " ";
-  theMessage += String(gyroYangle);
+  theMessage += String(baseAngleY);
   theMessage += " ";
-  theMessage += String(compAngleX);
+  theMessage += String(kalAlCorX);
   theMessage += " ";
-  theMessage += String(compAngleY);
+  theMessage += String(kalAlCorY);
   theMessage += " ";
-  theMessage += String(averageTime*averageNum);
+  theMessage += String(averageTime);
   delay(10);
   Firmata.sendString(theMessage.c_str());
 }
 
 void correctEngineToStall(){
+  double kalAlCorX = kalAngleX - baseAngleX;
+  double kalAlCorY = kalAngleY - baseAngleY;
 
-  int value2 = stallPow2_ - (int)kalAngleX + (int)kalAngleY;
-  int value3 = stallPow3_ + (int)kalAngleX + (int)kalAngleY;
-  int value6 = stallPow6_ + (int)kalAngleX - (int)kalAngleY;
-  int value7 = stallPow7_ - (int)kalAngleX - (int)kalAngleY;
+  int value2 = stallPow2_ - (int)kalAlCorX + (int)kalAlCorY;
+  int value3 = stallPow3_ + (int)kalAlCorX + (int)kalAlCorY;
+  int value6 = stallPow6_ + (int)kalAlCorX - (int)kalAlCorY;
+  int value7 = stallPow7_ - (int)kalAlCorX - (int)kalAlCorY;
+  /*int value2 = stallPow2_ - (int)compAngleX + (int)compAngleY;
+  int value3 = stallPow3_ + (int)compAngleX + (int)compAngleY;
+  int value6 = stallPow6_ + (int)compAngleX - (int)compAngleY;
+  int value7 = stallPow7_ - (int)compAngleX - (int)compAngleY;*/
 
   setEngine2To(value2);
   setEngine3To(value3);
@@ -1149,8 +1157,32 @@ void takeOff(){
   
 }
 
+void setStartingAngle()
+{
+  
+  int tempCounter = 0;
+  while (1){
+    applyKalman();
+    if (averageCounter == 0){
+      baseAngleX += kalAngleX; 
+      baseAngleY += kalAngleY;
+      tempCounter += 1;
+    }
+    if(tempCounter == 50){
+      baseAngleX = baseAngleX/51.0;
+      baseAngleY = baseAngleY/51.0;
+      return;
+    }
+  }
+  
+}
+
+
+
 void setup()
 {
+  pinMode(12, OUTPUT);
+  digitalWrite(12, HIGH);
   Firmata.setFirmwareVersion(FIRMATA_MAJOR_VERSION, FIRMATA_MINOR_VERSION);
 
   Firmata.attach(ANALOG_MESSAGE, analogWriteCallback);
@@ -1178,7 +1210,9 @@ void setup()
   systemResetCallback();  // reset to default config
 
   initSensorsAndKalman();
-
+  setStartingAngle();
+  digitalWrite(12, LOW);
+  
 }
 
 /*==============================================================================
