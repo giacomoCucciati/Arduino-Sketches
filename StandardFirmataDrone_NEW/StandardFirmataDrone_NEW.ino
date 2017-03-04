@@ -66,7 +66,7 @@ int stallPow7Vec_[50];
 
 double averageTime = 0;
 int averageCounter = 0;
-int averageNum = 25;
+int averageNum = 10;
 double baseAngleX = 0;
 double baseAngleY = 0;
 /*==============================================================================
