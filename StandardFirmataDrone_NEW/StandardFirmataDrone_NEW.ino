@@ -688,6 +688,17 @@ void sysexCallback(byte command, byte argc, byte *argv)
         setPedestals(val);
       }
       break;
+    case 0x17:
+      if (argc > 2) {
+        int motor = argv[0];
+        int val = argv[1];
+        val |= (argv[2] << 7);
+        if(motor == 2) setEngine2To(val);
+        if(motor == 3) setEngine3To(val);
+        if(motor == 6) setEngine6To(val);
+        if(motor == 7) setEngine7To(val);
+      }
+      break;
   }
 }
 
