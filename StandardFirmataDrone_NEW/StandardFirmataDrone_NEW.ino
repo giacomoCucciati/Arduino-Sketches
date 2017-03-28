@@ -64,6 +64,16 @@ int stallPow3Vec_[50];
 int stallPow6Vec_[50];
 int stallPow7Vec_[50];
 
+int calibration_power = 330;
+int offset_6 = 0;
+int offset_7 = 0;
+int offset_2 = 0;
+int offset_3 = 0;
+int counter_calibration = 0;
+double mean_deviation_x = 0;
+double mean_deviation_y = 0;
+
+
 double averageTime = 0;
 int averageCounter = 0;
 int averageNum = 10;
@@ -76,6 +86,9 @@ boolean isHigh = false;
 boolean printValues_ = false;
 boolean timeToStall_ = false;
 boolean timeToTakeOff_ = false;
+boolean timeToCalibrate_ = false;
+
+
 /* Accelerometer & Gyroscope */
 Adafruit_ADXL345_Unified accel;
 L3G4200D gyroscope;
@@ -699,6 +712,10 @@ void sysexCallback(byte command, byte argc, byte *argv)
         if(motor == 7) setEngine7To(val);
       }
       break;
+    case 0x18:
+      timeToCalibrate_ = !timeToCalibrate_;
+      break;
+    
   }
 }
 
@@ -776,6 +793,45 @@ void systemResetCallback()
   }
   */
   isResetting = false;
+}
+
+
+void startUpcalibration()//check motors positions
+{
+    setEngine6To(calibration_power+offset_6);
+    setEngine7To(calibration_power+offset_7);
+    setEngine2To(calibration_power+offset_2);
+    setEngine3To(calibration_power+offset_3);
+    if (counter_calibration < 100){
+      mean_deviation_x = mean_deviation_x + kalAngleX;
+      mean_deviation_y = mean_deviation_y + kalAngleY;
+      counter_calibration = counter_calibration +1;
+    }
+    else{
+    if (mean_deviation_x > 1 & mean_deviation_y > 1){
+      offset_6 = offset_6 - 1;
+    } 
+    if(mean_deviation_x > 1 & mean_deviation_y < 1){
+      offset_2 = offset_2 - 1;
+    }
+    if(mean_deviation_x < 1 & mean_deviation_y > 1){
+      offset_6 = offset_6 - 1;
+    } 
+    if(mean_deviation_x < 1 & mean_deviation_y < 1){
+      offset_7 = offset_7 - 1;
+    } 
+    calibration_power = calibration_power +1;
+    //if (distance > fly_value)
+    // timeToCalibrate_ = false;
+    // use it with a mean value?
+    //
+    if(calibration_power > 370 | offset_6,offset_7,offset_3, offset_2 > 10){
+      timeToCalibrate_ = false;
+    }
+    counter_calibration = 0;
+    mean_deviation_x = 0;
+    mean_deviation_y = 0;
+    }
 }
 
 void applyKalman()
@@ -1264,6 +1320,8 @@ void loop()
 
   applyKalman();
   if(timeToTakeOff_) takeOff();
+  if(timeToCalibrate_) startUpcalibration();
+
 
   currentMillis = millis();
   if (currentMillis - previousMillis > samplingInterval) {
