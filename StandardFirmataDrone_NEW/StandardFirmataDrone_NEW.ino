@@ -808,29 +808,32 @@ void startUpcalibration()//check motors positions
       counter_calibration = counter_calibration +1;
     }
     else{
-    if (mean_deviation_x > 1 & mean_deviation_y > 1){
-      offset_6 = offset_6 - 1;
-    } 
-    if(mean_deviation_x > 1 & mean_deviation_y < 1){
-      offset_2 = offset_2 - 1;
-    }
-    if(mean_deviation_x < 1 & mean_deviation_y > 1){
-      offset_6 = offset_6 - 1;
-    } 
-    if(mean_deviation_x < 1 & mean_deviation_y < 1){
-      offset_7 = offset_7 - 1;
-    } 
-    calibration_power = calibration_power +1;
-    //if (distance > fly_value)
-    // timeToCalibrate_ = false;
-    // use it with a mean value?
-    //
-    if(calibration_power > 370 | offset_6,offset_7,offset_3, offset_2 > 10){
-      timeToCalibrate_ = false;
-    }
-    counter_calibration = 0;
-    mean_deviation_x = 0;
-    mean_deviation_y = 0;
+      mean_deviation_x = mean_deviation_x/100;
+      mean_deviation_y = mean_deviation_y/100;
+      if (mean_deviation_x > 1 && mean_deviation_y > 1){
+        offset_2 = offset_2 - 2;
+      } 
+      if(mean_deviation_x > 1 && mean_deviation_y < 1){
+        offset_3 = offset_3 - 2;
+      }
+      if(mean_deviation_x < 1 && mean_deviation_y > 1){
+        offset_6 = offset_6 - 2;
+      } 
+      if(mean_deviation_x < 1 && mean_deviation_y < 1){
+        offset_7 = offset_7 - 2;
+      } 
+      calibration_power = calibration_power +1;
+      //if (distance > fly_value)
+      // timeToCalibrate_ = false;
+      // use it with a mean value?
+      //
+      if(calibration_power > 370 || offset_6 > 10 || offset_7 > 10 || offset_3 > 10 || offset_2 > 10){
+        timeToCalibrate_ = false;
+      }
+      counter_calibration = 0;
+      mean_deviation_x = 0;
+      mean_deviation_y = 0;
+      printEnginesAndAngles();
     }
 }
 
@@ -1319,7 +1322,7 @@ void loop()
     Firmata.processInput();
 
   applyKalman();
-  if(timeToTakeOff_) takeOff();
+  //if(timeToTakeOff_) takeOff();
   if(timeToCalibrate_) startUpcalibration();
 
 
