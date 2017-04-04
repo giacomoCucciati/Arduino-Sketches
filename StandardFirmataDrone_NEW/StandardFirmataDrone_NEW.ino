@@ -64,7 +64,21 @@ int stallPow3Vec_[50];
 int stallPow6Vec_[50];
 int stallPow7Vec_[50];
 
-int calibration_power = 330;
+//  Drone geometry initalization:
+//  assuming an equal force over all the motors, this has to be compensated by 
+//  the arm applied by the single motor wrt to the different axes.
+double armX_front = 10; 
+double armY_left  = 5;
+double armX_back  = 7;
+double armY_right = 5;
+
+//double correction_arm_2 = ;
+//double correction_arm_3 = ;
+//double correction_arm_6 = ;
+//double correction_arm_7 = ;
+
+
+int calibration_power = 0;
 int offset_6 = 0;
 int offset_7 = 0;
 int offset_2 = 0;
@@ -72,6 +86,8 @@ int offset_3 = 0;
 int counter_calibration = 0;
 double mean_deviation_x = 0;
 double mean_deviation_y = 0;
+int number_mean = 100;
+int another_counter = 0;
 
 
 double averageTime = 0;
@@ -714,6 +730,11 @@ void sysexCallback(byte command, byte argc, byte *argv)
       break;
     case 0x18:
       timeToCalibrate_ = !timeToCalibrate_;
+      calibration_power = 330;
+      another_counter = 0;
+      break;
+    case 0x19: //ramp down loop call
+      ramp_down();
       break;
     
   }
@@ -796,44 +817,47 @@ void systemResetCallback()
 }
 
 
+
 void startUpcalibration()//check motors positions
 {
-    setEngine6To(calibration_power+offset_6);
+    setEngine6To(calibration_power+offset_6);//set motors values
     setEngine7To(calibration_power+offset_7);
     setEngine2To(calibration_power+offset_2);
     setEngine3To(calibration_power+offset_3);
     if (counter_calibration < 100){
-      mean_deviation_x = mean_deviation_x + kalAngleX;
+      mean_deviation_x = mean_deviation_x + kalAngleX;//mean
       mean_deviation_y = mean_deviation_y + kalAngleY;
-      counter_calibration = counter_calibration +1;
+      counter_calibration = counter_calibration +1; //increase counter needed for mean
     }
     else{
-      mean_deviation_x = mean_deviation_x/100;
-      mean_deviation_y = mean_deviation_y/100;
-      if (mean_deviation_x > 1 && mean_deviation_y > 1){
-        offset_2 = offset_2 - 2;
-      } 
-      if(mean_deviation_x > 1 && mean_deviation_y < 1){
-        offset_3 = offset_3 - 2;
+    if (mean_deviation_x/number_mean > 1 && mean_deviation_y/number_mean > 1){ //check which motor is pushing too much
+      offset_2 = offset_2 - 1;
+    } 
+    if(mean_deviation_x/number_mean > 1 && mean_deviation_y/number_mean < 1){
+      offset_3 = offset_3 - 1;
+    }
+    if(mean_deviation_x/number_mean < 1 && mean_deviation_y/number_mean > 1){
+      offset_6 = offset_6 - 1;
+    } 
+    if(mean_deviation_x/number_mean < 1 && mean_deviation_y/number_mean < 1){
+      offset_7 = offset_7 - 1;
+    } 
+    calibration_power = calibration_power +1; //increase power for the next loop
+    //if (distance > fly_value) // implememting the distance sensor
+    // timeToCalibrate_ = false;
+    // use it with a mean value?
+    //
+    if(calibration_power > 370 | offset_6 > 40, offset_7 > 40, offset_3 > 40, offset_2 > 40){  //close calibration loop,
+      calibration_power = 330;
+      another_counter = another_counter+1; //another_counter will control the number of time the calibration will call,
+      if(another_counter == 4)             // but keeping the offsets memory!
+      {
+      timeToCalibrate_ = false;            //close the calibration
       }
-      if(mean_deviation_x < 1 && mean_deviation_y > 1){
-        offset_6 = offset_6 - 2;
-      } 
-      if(mean_deviation_x < 1 && mean_deviation_y < 1){
-        offset_7 = offset_7 - 2;
-      } 
-      calibration_power = calibration_power +1;
-      //if (distance > fly_value)
-      // timeToCalibrate_ = false;
-      // use it with a mean value?
-      //
-      if(calibration_power > 370 || offset_6 > 10 || offset_7 > 10 || offset_3 > 10 || offset_2 > 10){
-        timeToCalibrate_ = false;
-      }
-      counter_calibration = 0;
-      mean_deviation_x = 0;
-      mean_deviation_y = 0;
-      printEnginesAndAngles();
+    }
+    counter_calibration = 0;
+    mean_deviation_x = 0;
+    mean_deviation_y = 0;
     }
 }
 
@@ -1324,7 +1348,6 @@ void loop()
   applyKalman();
   //if(timeToTakeOff_) takeOff();
   if(timeToCalibrate_) startUpcalibration();
-
 
   currentMillis = millis();
   if (currentMillis - previousMillis > samplingInterval) {
