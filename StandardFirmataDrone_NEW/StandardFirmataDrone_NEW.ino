@@ -816,6 +816,18 @@ void systemResetCallback()
   isResetting = false;
 }
 
+void ramp_down()
+{
+  while(1)
+  {
+    if(pinState[2]>330) setEngine2To(pinState[2]-2);
+    if(pinState[3]>330) setEngine2To(pinState[3]-2);
+    if(pinState[2]>330) setEngine2To(pinState[6]-2);
+    if(pinState[7]>330) setEngine2To(pinState[7]-2);
+    delay(500);
+    if(pinState[2] < 330 && pinState[3] < 330 && pinState[6] < 330 && pinState[7] < 330) break;
+  }
+}
 
 
 void startUpcalibration()//check motors positions
@@ -824,6 +836,7 @@ void startUpcalibration()//check motors positions
     setEngine7To(calibration_power+offset_7);
     setEngine2To(calibration_power+offset_2);
     setEngine3To(calibration_power+offset_3);
+    delay(2000);
     if (counter_calibration < 100){
       mean_deviation_x = mean_deviation_x + kalAngleX;//mean
       mean_deviation_y = mean_deviation_y + kalAngleY;
@@ -849,8 +862,9 @@ void startUpcalibration()//check motors positions
     //
     if(calibration_power > 370 | offset_6 > 40, offset_7 > 40, offset_3 > 40, offset_2 > 40){  //close calibration loop,
       calibration_power = 330;
+      ramp_down();
       another_counter = another_counter+1; //another_counter will control the number of time the calibration will call,
-      if(another_counter == 4)             // but keeping the offsets memory!
+      if(another_counter == 2)             // but keeping the offsets memory!
       {
       timeToCalibrate_ = false;            //close the calibration
       }
