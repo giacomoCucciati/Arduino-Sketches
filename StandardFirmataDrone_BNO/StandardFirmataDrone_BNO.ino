@@ -68,7 +68,8 @@ float eulerX = 0;
 float eulerY = 0;
 float eulerZ = 0;
 imu::Vector<3> euler;
-
+unsigned long mytimer = 0;
+unsigned long dt = 0;
 int calibration_power = 0;
 int offset_6 = 0;
 int offset_7 = 0;
@@ -802,6 +803,8 @@ void ramp_down()
 
 void applyKalman()
 {  
+  dt = (double)(millis() - mytimer);
+  mytimer = millis();
   euler   = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
 
   eulerX = euler.x() - baseAngleX;
@@ -812,7 +815,7 @@ void applyKalman()
   //eulerZ = euler.z();
 
   if(printValues_) printEnginesAndAngles();
-  delay(BNO055_SAMPLERATE_DELAY_MS);
+ // delay(BNO055_SAMPLERATE_DELAY_MS);
 }
 
 void initSensors()
@@ -830,10 +833,6 @@ void setEngine2To(int value){
   sbi(TCCR3A, COM3B1);
   OCR3B = value;
   pinState[2] = value;
-  delay(1000);
-
-  /* Use external crystal for better accuracy */
-  bno.setExtCrystalUse(true);
    
 }
 
@@ -885,9 +884,9 @@ void printEnginesAndAngles(){
   theMessage += String(eulerY);
   theMessage += " ";
   theMessage += String(eulerZ);
-  /*theMessage += " ";
-  theMessage += String(baseAngleX);
   theMessage += " ";
+  theMessage += String(dt);
+  /*theMessage += " ";
   theMessage += String(baseAngleY);
   theMessage += " ";
   theMessage += String(baseAngleZ);*/
@@ -1031,7 +1030,7 @@ void setup()
   
   // Led off at the end of Setup function
   digitalWrite(12, LOW);
-
+  timer = millis();
 }
 
 /*==============================================================================
@@ -1048,6 +1047,7 @@ void loop()
   /* STREAMREAD - processing incoming messagse as soon as possible, while still
    * checking digital inputs.  */
   while (Firmata.available())
+    
     Firmata.processInput();
 
   applyKalman();
