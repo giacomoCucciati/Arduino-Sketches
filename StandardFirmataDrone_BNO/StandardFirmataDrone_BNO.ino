@@ -47,7 +47,7 @@
 
 // the minimum interval for sampling analog input
 #define MINIMUM_SAMPLING_INTERVAL 10
-#define BNO055_SAMPLERATE_DELAY_MS (100)
+#define BNO055_SAMPLERATE_DELAY_MS (25)
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 
@@ -78,9 +78,9 @@ int offset_3 = 0;
 int counter_calibration = 0;
 double mean_deviation_x = 0;
 double mean_deviation_y = 0;
-int number_mean = 100;
+int number_mean = 20;
 int another_counter = 0;
-
+int print_counter = 0;
 
 int averageCounter = 0;
 int averageNum = 10;
@@ -787,14 +787,17 @@ void systemResetCallback()
 
 void ramp_down()
 {
+  timeToCalibrate_ = false;
+  timeToStall_ = false;
   while(1)
   {
-    if(pinState[2]>330) setEngine2To(pinState[2]-2);
-    if(pinState[3]>330) setEngine3To(pinState[3]-2);
-    if(pinState[6]>330) setEngine6To(pinState[6]-2);
-    if(pinState[7]>330) setEngine7To(pinState[7]-2);
-    delay(500);
-    if(pinState[2] < 330 && pinState[3] < 330 && pinState[6] < 330 && pinState[7] < 330) break;
+    int minValue = 260;
+    if(pinState[2]>minValue) setEngine2To(pinState[2]-10);
+    if(pinState[3]>minValue) setEngine3To(pinState[3]-10);
+    if(pinState[6]>minValue) setEngine6To(pinState[6]-10);
+    if(pinState[7]>minValue) setEngine7To(pinState[7]-10);
+    delay(200);
+    if(pinState[2] <= minValue && pinState[3] <= minValue && pinState[6] <= minValue && pinState[7] <= minValue) break;
   }
 }
 
@@ -807,15 +810,15 @@ void applyKalman()
   mytimer = millis();
   euler   = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
 
-  eulerX = euler.x() - baseAngleX;
+  eulerX = euler.z() - baseAngleX;
   eulerY = euler.y() - baseAngleY;
-  eulerZ = euler.z() - baseAngleZ;
+  eulerZ = euler.x() - baseAngleZ;
   //eulerX = euler.x();
   //eulerY = euler.y();
   //eulerZ = euler.z();
 
   if(printValues_) printEnginesAndAngles();
- // delay(BNO055_SAMPLERATE_DELAY_MS);
+  delay(BNO055_SAMPLERATE_DELAY_MS);
 }
 
 void initSensors()
@@ -870,27 +873,32 @@ void setEnginesTo(int value){
 }
 
 void printEnginesAndAngles(){
-  String theMessage = "";
-  /*theMessage += String(pinState[2]);
-  theMessage += " ";
-  theMessage += String(pinState[3]);
-  theMessage += " ";
-  theMessage += String(pinState[6]);
-  theMessage += " ";
-  theMessage += String(pinState[7]);
-  theMessage += " ";*/
-  theMessage += String(eulerX);
-  theMessage += " ";
-  theMessage += String(eulerY);
-  theMessage += " ";
-  theMessage += String(eulerZ);
-  theMessage += " ";
-  theMessage += String(dt);
-  /*theMessage += " ";
-  theMessage += String(baseAngleY);
-  theMessage += " ";
-  theMessage += String(baseAngleZ);*/
-  Firmata.sendString(theMessage.c_str());
+  print_counter += 1;
+  if(print_counter == 10) {
+    String theMessage = "";
+    theMessage += String(pinState[2]);
+    theMessage += " ";
+    theMessage += String(pinState[3]);
+    theMessage += " ";
+    theMessage += String(pinState[6]);
+    theMessage += " ";
+    theMessage += String(pinState[7]);
+    theMessage += " ";
+    theMessage += String(eulerX);
+    theMessage += " ";
+    theMessage += String(eulerY);
+    theMessage += " ";
+    theMessage += String(eulerZ);
+    theMessage += " ";
+    theMessage += String(dt);
+    /*theMessage += " ";
+    theMessage += String(baseAngleY);
+    theMessage += " ";
+    theMessage += String(baseAngleZ);*/
+  
+    Firmata.sendString(theMessage.c_str());
+    print_counter = 0;
+  }
 }
 
 
@@ -918,10 +926,15 @@ void correctEnginesToStall(){
   double angleCorrectedX = eulerX;
   double angleCorrectedY = eulerY;
 
-  int value2 = pinState[2] - (int)angleCorrectedX + (int)angleCorrectedY;
+  /*int value2 = pinState[2] - (int)angleCorrectedX + (int)angleCorrectedY;
   int value3 = pinState[3] + (int)angleCorrectedX + (int)angleCorrectedY;
-  int value6 = pinState[6] + (int)angleCorrectedX - (int)angleCorrectedY;
-  int value7 = pinState[7] - (int)angleCorrectedX - (int)angleCorrectedY;
+  int value6 = pinState[6] - (int)angleCorrectedX - (int)angleCorrectedY;
+  int value7 = pinState[7] + (int)angleCorrectedX - (int)angleCorrectedY;*/
+
+  int value2 = 367 - (int)angleCorrectedX + (int)angleCorrectedY;
+  int value3 = 350 + (int)angleCorrectedX + (int)angleCorrectedY;
+  int value6 = 367 - (int)angleCorrectedX - (int)angleCorrectedY;
+  int value7 = 350 + (int)angleCorrectedX - (int)angleCorrectedY;  
 
   /*double angleFactor = cos(kalAlCorX * PI / 180.0) * cos(kalAlCorY * PI / 180.0);
   double deltaForce = weight/angleFactor - ((value2+value3+value6+value7)*Fstep) ;
@@ -948,38 +961,70 @@ void startUpcalibration()//check motors positions
 {
 
     if (counter_calibration < number_mean){
-      mean_deviation_x = mean_deviation_x + eulerZ;//mean
+      mean_deviation_x = mean_deviation_x + eulerX; //mean
       mean_deviation_y = mean_deviation_y + eulerY;
       counter_calibration = counter_calibration +1; //increase counter needed for mean
     }
     else{
       double meanX = mean_deviation_x/number_mean;
       double meanY = mean_deviation_y/number_mean;
-      if (meanX > 1 && meanY > 1){ //check which motor is pushing too much
+      if (meanX > 1 && meanY < 1 && meanY > -1){ //check which motor is pushing too much
         offset_2 = offset_2 - 1;
+        offset_6 = offset_6 - 1;
+        offset_3 = offset_3 + 1;
+        offset_7 = offset_7 + 1;
+      } 
+      if(meanX < 1 && meanY < 1 && meanY > -1){
+        offset_3 = offset_3 - 1;
+        offset_7 = offset_7 - 1;
+        offset_2 = offset_2 + 1;
+        offset_6 = offset_6 + 1;
+      }
+      if(meanX < 1 && meanX > -1 && meanY > 1){
+        offset_6 = offset_6 - 1;
+        offset_7 = offset_7 - 1;
+        offset_2 = offset_2 + 1;
+        offset_3 = offset_3 + 1;
+      } 
+      if(meanX < 1 && meanX > -1 && meanY < 1){
+        offset_2 = offset_2 - 1;
+        offset_3 = offset_3 - 1;
+        offset_7 = offset_7 + 1;
+        offset_6 = offset_6 + 1;
+      }
+      
+      if (meanX > 1 && meanY > 1){ //check which motor is pushing too much
+        offset_6 = offset_6 - 1;
+        offset_3 = offset_3 + 1;
       } 
       if(meanX > 1 && meanY < 1){
-        offset_3 = offset_3 - 1;
+        offset_2 = offset_2 - 1;
+        offset_7 = offset_7 + 1;
       }
       if(meanX < 1 && meanY > 1){
-        offset_6 = offset_6 - 1;
+        offset_7 = offset_7 - 1;
+        offset_2 = offset_2 + 1;
       } 
       if(meanX < 1 && meanY < 1){
-        offset_7 = offset_7 - 1;
+        offset_3 = offset_3 - 1;
+        offset_6 = offset_6 + 1;
       } 
       setEngine6To(calibration_power+offset_6);//set motors values
       setEngine7To(calibration_power+offset_7);
       setEngine2To(calibration_power+offset_2);
       setEngine3To(calibration_power+offset_3);
-      
-      calibration_power = calibration_power +1; //increase power for the next loop
+
+      if(! (meanX >= 2 || meanX <= -2 || meanY>=2 || meanY <= -2)){
+            calibration_power = calibration_power +1;
+      }
+      //increase power for the next loop
           
       delay(500);
       //if (distance > fly_value) // implememting the distance sensor
       // timeToCalibrate_ = false;
       // use it with a mean value?
       //
-      if(calibration_power > 370 || offset_6 > 40 || offset_7 > 40 || offset_3 > 40 || offset_2 > 40) {  //close calibration loop,
+      if(calibration_power > 380 || offset_6 > 40 || offset_7 > 40 || offset_3 > 40 || offset_2 > 40) {  //close calibration loop,
         calibration_power = 330;
         ramp_down();
         another_counter = another_counter+1; // another_counter will control the times the calibration will call,
@@ -1046,10 +1091,10 @@ void loop()
 
   /* STREAMREAD - processing incoming messagse as soon as possible, while still
    * checking digital inputs.  */
-  while (Firmata.available())
-    
+  while (Firmata.available()) {
     Firmata.processInput();
-
+  };
+  
   applyKalman();
   if(timeToCalibrate_) startUpcalibration();
   if(timeToStall_) correctEnginesToStall();
