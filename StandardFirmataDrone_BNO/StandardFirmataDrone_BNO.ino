@@ -81,6 +81,18 @@ double mean_deviation_y = 0;
 int number_mean = 20;
 int another_counter = 0;
 int print_counter = 0;
+unsigned long distanza_prima = 999;
+unsigned long distanza_dopo = 0;
+int counter = 0;
+int takeOffPower = 350;
+int numPedestals_ = 10; 
+int counterDelay = 0;
+int value2 = 0;
+int value3 = 0;
+int value6 = 0;
+int value7 = 0;
+double angleCorrectedX = 0;
+double angleCorrectedY = 0;
 
 int averageCounter = 0;
 int averageNum = 10;
@@ -683,6 +695,7 @@ void sysexCallback(byte command, byte argc, byte *argv)
     // Enable take off procedure
     case 0x15:
       timeToTakeOff_ = !timeToTakeOff_;
+      //timeToStall_ = !timeToStall_;  //ToDo: uncomment this if you want automatic takeoff, otherwise first sysex x14 has to be called.
       break;
     case 0x17:
       if (argc > 2) {
@@ -763,7 +776,7 @@ void systemResetCallback()
     } else {
       // sets the output to 0, configures portConfigInputs
       setPinModeCallback(i, OUTPUT);
-    }
+     }
 
     servoPinMap[i] = 255;
   }
@@ -788,24 +801,76 @@ void systemResetCallback()
 void ramp_down()
 {
   timeToCalibrate_ = false;
-  timeToStall_ = false;
-  while(1)
-  {
+  timeToStall_     = false;
+  timeToTakeOff_   = false;
+  while(1){
     int minValue = 260;
-    if(pinState[2]>minValue) setEngine2To(pinState[2]-10);
-    if(pinState[3]>minValue) setEngine3To(pinState[3]-10);
-    if(pinState[6]>minValue) setEngine6To(pinState[6]-10);
-    if(pinState[7]>minValue) setEngine7To(pinState[7]-10);
+    if(pinState[2]>minValue) setEngine2To(pinState[2]-2);
+    if(pinState[3]>minValue) setEngine3To(pinState[3]-2);
+    if(pinState[6]>minValue) setEngine6To(pinState[6]-2);
+    if(pinState[7]>minValue) setEngine7To(pinState[7]-2);
     delay(200);
     if(pinState[2] <= minValue && pinState[3] <= minValue && pinState[6] <= minValue && pinState[7] <= minValue) break;
   }
 }
 
+void getDistance(){
+  // Calcolo angolo totale rispetto alla verticale
+  double angoloTot = acos(cos(eulerX * 71 / 4068) * cos(eulerY * 71 / 4068));
+
+  // Se l'angolo complessivo e' minore di 5 gradi
+  // procedi con il calcolo dei pedestal, altrimenti continua con il tentativo di stallo (loop principale)
+  if(angoloTot < 0.087) {  // ToDo: test to verify the independence of the distance detected from a plane over different angles the angle (whithin 15 degrees)
+    // Effettuo la misura di distanza
+    // Porto bassa l'uscita del trigger
+    digitalWrite( triggerPort, LOW );
+    // Invio un impulso di 10us su trigger
+    digitalWrite( triggerPort, HIGH );
+    delayMicroseconds( 10 );
+    digitalWrite( triggerPort, LOW );
+    unsigned long durata = pulseIn( echoPort, HIGH ); // waint until the pulse is detected
+    distanza_dopo = 0.034 * durata / 2;
+    // Distanza corretta per la rotazione su x e y
+    // distanza_dopo = distanza_dopo * cos(kalAngleX) * cos(kalAngleY);
 
 
+    //dopo 38ms è fuori dalla portata del sensore
+    if( durata > 38000 ){
+          ramp_down();
+    }
+  }
+}
 
-void applyKalman()
-{  
+void takeOff(){ //calibrazione pedestals
+  counterDelay++;
+  if(counterDelay > 50){
+    getDistance();  
+    if (distanza_dopo < 20){ // Il drone non ha ancora raggiunto la quota di calibrazione
+      if (distanza_dopo > distanza_prima) {
+      //Nothing to do
+      } else if(distanza_dopo <= distanza_prima) {
+        takeOffPower = takeOffPower + 1;
+        } 
+    } else if (distanza_dopo >= 20) { // Il drone ha superato la quota di calibrazione
+      counter ++;
+      if (distanza_dopo > distanza_prima) {
+        takeOffPower = takeOffPower - 1;
+        } 
+      }
+      // Aggiorno la distanza
+      distanza_prima = distanza_dopo;
+      counterDelay = 0;
+  }
+  // Ho raccolto abbastanza pedestals per fare una buona media?
+  if (counter == numPedestals_) {
+    // Faccio una media dei pedestals e spengo il ciclo di decollo
+    // Si torna nel loop principale con il timeToStall_ attivato
+    timeToTakeOff_ = false;
+    ramp_down();
+  }
+} 
+
+void getAngles(){  
   dt = (double)(millis() - mytimer);
   mytimer = millis();
   euler   = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
@@ -817,8 +882,10 @@ void applyKalman()
   //eulerY = euler.y();
   //eulerZ = euler.z();
 
-  if(printValues_) printEnginesAndAngles();
+  if(printValues_){ 
+  printEnginesAndAngles();
   delay(BNO055_SAMPLERATE_DELAY_MS);
+  }
 }
 
 void initSensors()
@@ -891,6 +958,8 @@ void printEnginesAndAngles(){
     theMessage += String(eulerZ);
     theMessage += " ";
     theMessage += String(dt);
+    theMessage += " ";
+    theMessage += String(distanza_dopo);
     /*theMessage += " ";
     theMessage += String(baseAngleY);
     theMessage += " ";
@@ -912,7 +981,7 @@ void setStartingAngle()
   float tempBaseZ = 0;
   for (int tempCounter = 0; tempCounter < 100; tempCounter++) {
     // At this point baseAngleX and baseAngleY are still 0.
-    applyKalman();
+    getAngles();
     tempBaseX += eulerX;
     tempBaseY += eulerY;
     tempBaseZ += eulerZ;
@@ -922,19 +991,15 @@ void setStartingAngle()
   baseAngleZ = tempBaseZ/100.0;
 }
 
-void correctEnginesToStall(){
-  double angleCorrectedX = eulerX;
-  double angleCorrectedY = eulerY;
-
-  /*int value2 = pinState[2] - (int)angleCorrectedX + (int)angleCorrectedY;
-  int value3 = pinState[3] + (int)angleCorrectedX + (int)angleCorrectedY;
-  int value6 = pinState[6] - (int)angleCorrectedX - (int)angleCorrectedY;
-  int value7 = pinState[7] + (int)angleCorrectedX - (int)angleCorrectedY;*/
-
-  int value2 = 367 - (int)angleCorrectedX + (int)angleCorrectedY;
-  int value3 = 350 + (int)angleCorrectedX + (int)angleCorrectedY;
-  int value6 = 367 - (int)angleCorrectedX - (int)angleCorrectedY;
-  int value7 = 350 + (int)angleCorrectedX - (int)angleCorrectedY;  
+void correctEnginesToStall(){ // ToDo: setEngine2To(takeOffPower+offset_2);
+  
+  angleCorrectedX = eulerX;
+  angleCorrectedY = eulerY;
+  
+  value2 = takeOffPower+offset_2 - (int)angleCorrectedX + (int)angleCorrectedY; // the initial value (eg 367) should be implemented as the current power + offset_motor (calculated trough calibration)
+  value3 = takeOffPower+offset_3 + (int)angleCorrectedX + (int)angleCorrectedY;
+  value6 = takeOffPower+offset_6 - (int)angleCorrectedX - (int)angleCorrectedY;
+  value7 = takeOffPower+offset_7 + (int)angleCorrectedX - (int)angleCorrectedY;  
 
   /*double angleFactor = cos(kalAlCorX * PI / 180.0) * cos(kalAlCorY * PI / 180.0);
   double deltaForce = weight/angleFactor - ((value2+value3+value6+value7)*Fstep) ;
@@ -960,83 +1025,85 @@ void correctEnginesToStall(){
 void startUpcalibration()//check motors positions
 {
 
-    if (counter_calibration < number_mean){
-      mean_deviation_x = mean_deviation_x + eulerX; //mean
-      mean_deviation_y = mean_deviation_y + eulerY;
-      counter_calibration = counter_calibration +1; //increase counter needed for mean
+  if (counter_calibration < number_mean){
+    mean_deviation_x = mean_deviation_x + eulerX; //mean
+    mean_deviation_y = mean_deviation_y + eulerY;
+    counter_calibration = counter_calibration +1; //increase counter needed for mean
+  }
+  else{
+    double meanX = mean_deviation_x/number_mean;
+    double meanY = mean_deviation_y/number_mean;
+    if (meanX > 1 && meanY < 1 && meanY > -1){ //check which motor is pushing too much
+      offset_2 = offset_2 - 1;
+      offset_6 = offset_6 - 1;
+      offset_3 = offset_3 + 1;
+      offset_7 = offset_7 + 1;
+    } 
+    if(meanX < 1 && meanY < 1 && meanY > -1){
+      offset_3 = offset_3 - 1;
+      offset_7 = offset_7 - 1;
+      offset_2 = offset_2 + 1;
+      offset_6 = offset_6 + 1;
     }
-    else{
-      double meanX = mean_deviation_x/number_mean;
-      double meanY = mean_deviation_y/number_mean;
-      if (meanX > 1 && meanY < 1 && meanY > -1){ //check which motor is pushing too much
-        offset_2 = offset_2 - 1;
-        offset_6 = offset_6 - 1;
-        offset_3 = offset_3 + 1;
-        offset_7 = offset_7 + 1;
-      } 
-      if(meanX < 1 && meanY < 1 && meanY > -1){
-        offset_3 = offset_3 - 1;
-        offset_7 = offset_7 - 1;
-        offset_2 = offset_2 + 1;
-        offset_6 = offset_6 + 1;
-      }
-      if(meanX < 1 && meanX > -1 && meanY > 1){
-        offset_6 = offset_6 - 1;
-        offset_7 = offset_7 - 1;
-        offset_2 = offset_2 + 1;
-        offset_3 = offset_3 + 1;
-      } 
-      if(meanX < 1 && meanX > -1 && meanY < 1){
-        offset_2 = offset_2 - 1;
-        offset_3 = offset_3 - 1;
-        offset_7 = offset_7 + 1;
-        offset_6 = offset_6 + 1;
-      }
+    if(meanX < 1 && meanX > -1 && meanY > 1){
+      offset_6 = offset_6 - 1;
+      offset_7 = offset_7 - 1;
+      offset_2 = offset_2 + 1;
+      offset_3 = offset_3 + 1;
+    } 
+    if(meanX < 1 && meanX > -1 && meanY < 1){
+      offset_2 = offset_2 - 1;
+      offset_3 = offset_3 - 1;
+      offset_7 = offset_7 + 1;
+      offset_6 = offset_6 + 1;
+    }
       
-      if (meanX > 1 && meanY > 1){ //check which motor is pushing too much
-        offset_6 = offset_6 - 1;
-        offset_3 = offset_3 + 1;
-      } 
-      if(meanX > 1 && meanY < 1){
-        offset_2 = offset_2 - 1;
-        offset_7 = offset_7 + 1;
-      }
-      if(meanX < 1 && meanY > 1){
-        offset_7 = offset_7 - 1;
-        offset_2 = offset_2 + 1;
-      } 
-      if(meanX < 1 && meanY < 1){
-        offset_3 = offset_3 - 1;
-        offset_6 = offset_6 + 1;
-      } 
-      setEngine6To(calibration_power+offset_6);//set motors values
-      setEngine7To(calibration_power+offset_7);
-      setEngine2To(calibration_power+offset_2);
-      setEngine3To(calibration_power+offset_3);
-
-      if(! (meanX >= 2 || meanX <= -2 || meanY>=2 || meanY <= -2)){
-            calibration_power = calibration_power +1;
-      }
-      //increase power for the next loop
-          
-      delay(500);
-      //if (distance > fly_value) // implememting the distance sensor
-      // timeToCalibrate_ = false;
-      // use it with a mean value?
-      //
-      if(calibration_power > 380 || offset_6 > 40 || offset_7 > 40 || offset_3 > 40 || offset_2 > 40) {  //close calibration loop,
-        calibration_power = 330;
-        ramp_down();
-        another_counter = another_counter+1; // another_counter will control the times the calibration will call,
-        if(another_counter == 1)             // but keeping the offsets memory!
-        {
-          timeToCalibrate_ = false;          //close the calibration
-        }
-      }
-      counter_calibration = 0;
-      mean_deviation_x = 0;
-      mean_deviation_y = 0;
+    if (meanX > 1 && meanY > 1){ //check which motor is pushing too much
+      offset_6 = offset_6 - 1;
+      offset_3 = offset_3 + 1;
+    } 
+    if(meanX > 1 && meanY < 1){
+      offset_2 = offset_2 - 1;
+      offset_7 = offset_7 + 1;
     }
+    if(meanX < 1 && meanY > 1){
+      offset_7 = offset_7 - 1;
+      offset_2 = offset_2 + 1;
+    } 
+    if(meanX < 1 && meanY < 1){
+      offset_3 = offset_3 - 1;
+      offset_6 = offset_6 + 1;
+    } 
+    setEngine6To(calibration_power+offset_6);//set motors values
+    setEngine7To(calibration_power+offset_7);
+    setEngine2To(calibration_power+offset_2);
+    setEngine3To(calibration_power+offset_3);
+
+    //if(! (meanX >= 2 || meanX <= -2 || meanY>=2 || meanY <= -2)){
+    //      calibration_power = calibration_power +1;
+    //}
+    //increase power for the next loop
+        
+    delay(500);
+      
+    getDistance();
+    if (distanza_dopo > 5){ // implememting the distance sensor (ToDo: is it in cm?)
+      timeToCalibrate_ = false;
+      ramp_down();
+      //use it with a mean value?
+      }
+    if(calibration_power > 380 || offset_6 > 40 || offset_7 > 40 || offset_3 > 40 || offset_2 > 40) {  //close calibration loop,
+      calibration_power = 330;
+      ramp_down();
+      another_counter = another_counter+1; // another_counter will control the times the calibration will call,
+      if(another_counter == 1){             // but keeping the offsets memory!
+        timeToCalibrate_ = false; //close the calibration
+      }
+    }
+    counter_calibration = 0;
+    mean_deviation_x = 0;
+    mean_deviation_y = 0;
+  }
 }
 
 void setup()
@@ -1095,8 +1162,9 @@ void loop()
     Firmata.processInput();
   };
   
-  applyKalman();
+  getAngles();
   if(timeToCalibrate_) startUpcalibration();
+  if(timeToTakeOff_) takeOff();
   if(timeToStall_) correctEnginesToStall();
 
   currentMillis = millis();
