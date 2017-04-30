@@ -94,6 +94,8 @@ int value7 = 0;
 double angleCorrectedX = 0;
 double angleCorrectedY = 0;
 
+int pedestals[4];
+
 int averageCounter = 0;
 int averageNum = 10;
 float baseAngleX = 0;
@@ -697,6 +699,7 @@ void sysexCallback(byte command, byte argc, byte *argv)
       timeToTakeOff_ = !timeToTakeOff_;
       //timeToStall_ = !timeToStall_;  //ToDo: uncomment this if you want automatic takeoff, otherwise first sysex x14 has to be called.
       break;
+    // Set a specific engine to a custom value.
     case 0x17:
       if (argc > 2) {
         int motor = argv[0];
@@ -717,6 +720,23 @@ void sysexCallback(byte command, byte argc, byte *argv)
     // Start landing function
     case 0x19: //ramp down loop call
       ramp_down();
+      break;
+    // Set all pedestals to a custom value.
+    case 0x1a:
+      if (argc > 1) {
+        int val = argv[0];
+        val |= (argv[1] << 7);
+        setPedestalsTo(val);
+      }
+      break;
+    // Set single pedestal to a custom value.
+    case 0x1b:
+      if (argc > 2) {
+        int motor = argv[0];
+        int val = argv[1];
+        val |= (argv[2] << 7);
+        setPedestalTo(motor,val);
+      }
       break;
     
   }
@@ -932,11 +952,26 @@ void setEngine7To(int value){
 
 void setEnginesTo(int value){
 
-  
+  setEngine2To(value);
   setEngine3To(value);
   setEngine6To(value);
   setEngine7To(value);
-  setEngine2To(value);
+}
+
+void setPedestalsTo(int value){
+  
+  pedestals[0] = value;
+  pedestals[1] = value;
+  pedestals[2] = value;
+  pedestals[3] = value;
+}
+
+void setPedestalTo(int motor, int value){
+  
+  if(motor == 2) pedestals[0] = value;
+  if(motor == 3) pedestals[1] = value;
+  if(motor == 6) pedestals[2] = value;
+  if(motor == 6) pedestals[3] = value;
 }
 
 void printEnginesAndAngles(){
@@ -996,10 +1031,11 @@ void correctEnginesToStall(){ // ToDo: setEngine2To(takeOffPower+offset_2);
   angleCorrectedX = eulerX;
   angleCorrectedY = eulerY;
   
-  value2 = takeOffPower+offset_2 - (int)angleCorrectedX + (int)angleCorrectedY; // the initial value (eg 367) should be implemented as the current power + offset_motor (calculated trough calibration)
-  value3 = takeOffPower+offset_3 + (int)angleCorrectedX + (int)angleCorrectedY;
-  value6 = takeOffPower+offset_6 - (int)angleCorrectedX - (int)angleCorrectedY;
-  value7 = takeOffPower+offset_7 + (int)angleCorrectedX - (int)angleCorrectedY;  
+  // the initial value (eg 367) should be implemented as the current power + offset_motor (calculated trough calibration)
+  value2 = takeOffPower+offset_2+pedestals[0] - (int)angleCorrectedX + (int)angleCorrectedY;
+  value3 = takeOffPower+offset_3+pedestals[1] + (int)angleCorrectedX + (int)angleCorrectedY;
+  value6 = takeOffPower+offset_6+pedestals[2] - (int)angleCorrectedX - (int)angleCorrectedY;
+  value7 = takeOffPower+offset_7+pedestals[3] + (int)angleCorrectedX - (int)angleCorrectedY;  
 
   /*double angleFactor = cos(kalAlCorX * PI / 180.0) * cos(kalAlCorY * PI / 180.0);
   double deltaForce = weight/angleFactor - ((value2+value3+value6+value7)*Fstep) ;
@@ -1139,7 +1175,10 @@ void setup()
 
   initSensors();
   setStartingAngle();
-  
+  pedestals[0] = 260;
+  pedestals[1] = 260;
+  pedestals[2] = 260;
+  pedestals[3] = 260;
   // Led off at the end of Setup function
   digitalWrite(12, LOW);
   timer = millis();
