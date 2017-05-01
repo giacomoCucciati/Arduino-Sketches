@@ -84,8 +84,9 @@ int print_counter = 0;
 unsigned long distanza_prima = 999;
 unsigned long distanza_dopo = 0;
 int counter = 0;
-int takeOffPower = 350;
-int numPedestals_ = 10; 
+int takeOffPower = 330;
+int numPedestals_ = 20; 
+int takeoffVec_[20];  //change both this numebrs together
 int counterDelay = 0;
 int value2 = 0;
 int value3 = 0;
@@ -117,7 +118,7 @@ unsigned long timer = 0;
 
 //weight and Fstep
 double weight = 1.56;
-double Fstep = weight / (4*350);
+double Fstep = weight / (takeOffPower * 4 + (offset_6 + offset_7 + offset_2 + offset_3) );
 
 
 /* ------------------ */
@@ -872,6 +873,7 @@ void takeOff(){ //calibrazione pedestals
         takeOffPower = takeOffPower + 1;
         } 
     } else if (distanza_dopo >= 20) { // Il drone ha superato la quota di calibrazione
+      takeoffVec_[counter] = takeOffPower;
       counter ++;
       if (distanza_dopo > distanza_prima) {
         takeOffPower = takeOffPower - 1;
