@@ -84,7 +84,7 @@ int print_counter = 0;
 unsigned long distanza_prima = 999;
 unsigned long distanza_dopo = 0;
 int counter = 0;
-int takeOffPower = 330;
+int takeOffPower = 0;
 int numPedestals_ = 20; 
 int takeoffVec_[20];  //change both this numebrs together
 int counterDelay = 0;
@@ -123,8 +123,8 @@ double Fstep = weight / (takeOffPower * 4 + (offset_6 + offset_7 + offset_2 + of
 
 /* ------------------ */
 /* Distance sensor */
-const int triggerPort = 24;
-const int echoPort = 22;
+const int triggerPort = 23;
+const int echoPort = 25;
 
 
 /* analog inputs */
@@ -904,10 +904,8 @@ void getAngles(){
   //eulerY = euler.y();
   //eulerZ = euler.z();
 
-  if(printValues_){ 
-  printEnginesAndAngles();
+  if(printValues_) printEnginesAndAngles();
   delay(BNO055_SAMPLERATE_DELAY_MS);
-  }
 }
 
 void initSensors()
@@ -1117,9 +1115,9 @@ void startUpcalibration()//check motors positions
     setEngine2To(calibration_power+offset_2);
     setEngine3To(calibration_power+offset_3);
 
-    //if(! (meanX >= 2 || meanX <= -2 || meanY>=2 || meanY <= -2)){
-    //      calibration_power = calibration_power +1;
-    //}
+    if(! (meanX >= 2 || meanX <= -2 || meanY>=2 || meanY <= -2)){
+          calibration_power = calibration_power +1;
+    }
     //increase power for the next loop
         
     delay(500);
