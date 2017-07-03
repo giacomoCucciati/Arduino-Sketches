@@ -971,7 +971,7 @@ void setPedestalTo(int motor, int value){
   if(motor == 2) pedestals[0] = value;
   if(motor == 3) pedestals[1] = value;
   if(motor == 6) pedestals[2] = value;
-  if(motor == 6) pedestals[3] = value;
+  if(motor == 7) pedestals[3] = value;
 }
 
 void printEnginesAndAngles(){
