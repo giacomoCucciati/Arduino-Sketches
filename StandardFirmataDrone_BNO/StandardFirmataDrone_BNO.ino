@@ -32,6 +32,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
+#include <EEPROM.h>
 
 
 #define sbi(sfr, bit) (_SFR_BYTE(sfr) |= _BV(bit))
@@ -739,6 +740,11 @@ void sysexCallback(byte command, byte argc, byte *argv)
         setPedestalTo(motor,val);
       }
       break;
+    // Command to set starting angles
+    case 0x1c:
+      calculateStartingAngleCallback();
+      setStartingAngle();
+      break;
     
   }
 }
@@ -1005,10 +1011,52 @@ void printEnginesAndAngles(){
   }
 }
 
+void setStartingAngle(){
+
+  //digitalWrite(46, HIGH);
+  // Read first angles in the EEPRON.
+  // If they are bad, use 0 as base angles.
+
+  float tempX[3];
+  float tempY[3];
+  float tempZ[3];
+
+  int eeAddress = 0;
+  for(int i = 0; i<3; i++){
+    EEPROM.get(eeAddress, tempX[i]);
+    eeAddress += sizeof(float);
+    EEPROM.get(eeAddress, tempY[i]);
+    eeAddress += sizeof(float);
+    EEPROM.get(eeAddress, tempZ[i]);
+    eeAddress += sizeof(float);
+  }
+  // Check that they are reasonable
+  bool goodData = true;
+  for(int i = 0; i<2; i++){
+    if(tempX[i] != tempX[i+1]) goodData = false;
+    if(tempY[i] != tempY[i+1]) goodData = false;
+    if(tempZ[i] != tempZ[i+1]) goodData = false;
+  }
+  if(goodData){
+    baseAngleX = tempX[0];
+    baseAngleY = tempY[0];
+    baseAngleZ = tempZ[0];
+  }
+  // Some logging
+  String theMessage = "Reading from EEPRON angles: ";
+  theMessage += String(baseAngleX);
+  theMessage += " ";
+  theMessage += String(baseAngleY);
+  theMessage += " ";
+  theMessage += String(baseAngleZ);
+  Firmata.sendString(theMessage.c_str());
+  //digitalWrite(46, LOW);
+  
+}
 
 // Calculate the starting X and Y angle of the 
 // gyroscope when the drone still off.
-void setStartingAngle()
+void calculateStartingAngle()
 {
   delay(1000);
   float tempBaseX = 0;
@@ -1024,6 +1072,38 @@ void setStartingAngle()
   baseAngleX = tempBaseX/100.0;
   baseAngleY = tempBaseY/100.0;
   baseAngleZ = tempBaseZ/100.0;
+}
+
+void calculateStartingAngleCallback()
+{
+  digitalWrite(46, HIGH);
+  // Cleaning the EEPRON
+  for (int i = 0 ; i < EEPROM.length() ; i++) {
+    EEPROM.write(i, 0);
+  }
+  calculateStartingAngle();
+
+  // Writing on EEPRON
+  // We write 3 times so we can check later if they are the same
+  int eeAddress = 0;
+  for(int i=0; i < 3; i++){   
+    EEPROM.put(eeAddress, baseAngleX);
+    eeAddress += sizeof(float);
+    EEPROM.put(eeAddress, baseAngleY);
+    eeAddress += sizeof(float);
+    EEPROM.put(eeAddress, baseAngleZ);
+    eeAddress += sizeof(float);
+  }
+  
+  // Some logging
+  String theMessage = "Writing on EEPRON angles: ";
+  theMessage += String(baseAngleX);
+  theMessage += " ";
+  theMessage += String(baseAngleY);
+  theMessage += " ";
+  theMessage += String(baseAngleZ);
+  Firmata.sendString(theMessage.c_str());
+  digitalWrite(46, LOW);
 }
 
 void correctEnginesToStall(){ // ToDo: setEngine2To(takeOffPower+offset_2);
@@ -1145,8 +1225,8 @@ void startUpcalibration()//check motors positions
 void setup()
 {
   // Led on during Setup function
-  pinMode(12, OUTPUT);
-  digitalWrite(12, HIGH);
+  pinMode(46, OUTPUT);
+  digitalWrite(46, HIGH);
   Firmata.setFirmwareVersion(FIRMATA_MAJOR_VERSION, FIRMATA_MINOR_VERSION);
 
   Firmata.attach(ANALOG_MESSAGE, analogWriteCallback);
@@ -1166,7 +1246,6 @@ void setup()
   Firmata.begin(57600);
 
   //Set arduino timers to increase control on PWM
-
   setMyTimersRegisters();
   while (!Serial) {
     ; // wait for serial port to connect. Only needed for ATmega32u4-based boards (Leonardo, etc).
@@ -1174,13 +1253,13 @@ void setup()
   systemResetCallback();  // reset to default config
 
   initSensors();
-  setStartingAngle();
+  //setStartingAngle();
   pedestals[0] = 260;
   pedestals[1] = 260;
   pedestals[2] = 260;
   pedestals[3] = 260;
   // Led off at the end of Setup function
-  digitalWrite(12, LOW);
+  digitalWrite(46, LOW);
   timer = millis();
 }
 
