@@ -31,7 +31,6 @@
 #include <Firmata.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
-#include <utility/imumaths.h>
 #include <EEPROM.h>
 
 
@@ -48,7 +47,7 @@
 
 // the minimum interval for sampling analog input
 #define MINIMUM_SAMPLING_INTERVAL 10
-#define BNO055_SAMPLERATE_DELAY_MS (25)
+#define BNO055_SAMPLERATE_DELAY_MS (10)
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 
@@ -911,6 +910,7 @@ void getAngles(){
   //eulerZ = euler.z();
 
   if(printValues_) printEnginesAndAngles();
+  
   delay(BNO055_SAMPLERATE_DELAY_MS);
 }
 
@@ -1112,10 +1112,10 @@ void correctEnginesToStall(){ // ToDo: setEngine2To(takeOffPower+offset_2);
   angleCorrectedY = eulerY;
   
   // the initial value (eg 367) should be implemented as the current power + offset_motor (calculated trough calibration)
-  value2 = takeOffPower+offset_2+pedestals[0] - (int)angleCorrectedX + (int)angleCorrectedY;
-  value3 = takeOffPower+offset_3+pedestals[1] + (int)angleCorrectedX + (int)angleCorrectedY;
-  value6 = takeOffPower+offset_6+pedestals[2] - (int)angleCorrectedX - (int)angleCorrectedY;
-  value7 = takeOffPower+offset_7+pedestals[3] + (int)angleCorrectedX - (int)angleCorrectedY;  
+  value2 = takeOffPower+offset_2+pedestals[0] - (int)(angleCorrectedX*2) + (int)(angleCorrectedY*2);
+  value3 = takeOffPower+offset_3+pedestals[1] + (int)(angleCorrectedX*2) + (int)(angleCorrectedY*2);
+  value6 = takeOffPower+offset_6+pedestals[2] - (int)(angleCorrectedX*2) - (int)(angleCorrectedY*2);
+  value7 = takeOffPower+offset_7+pedestals[3] + (int)(angleCorrectedX*2) - (int)(angleCorrectedY*2);  
 
   /*double angleFactor = cos(kalAlCorX * PI / 180.0) * cos(kalAlCorY * PI / 180.0);
   double deltaForce = weight/angleFactor - ((value2+value3+value6+value7)*Fstep) ;
@@ -1272,7 +1272,7 @@ void loop()
 
   /* DIGITALREAD - as fast as possible, check for changes and output them to the
    * FTDI buffer using Serial.print()  */
-  checkDigitalInputs();
+  //checkDigitalInputs();
 
   /* STREAMREAD - processing incoming messagse as soon as possible, while still
    * checking digital inputs.  */
@@ -1285,10 +1285,10 @@ void loop()
   if(timeToTakeOff_) takeOff();
   if(timeToStall_) correctEnginesToStall();
 
-  currentMillis = millis();
+  /*currentMillis = millis();
   if (currentMillis - previousMillis > samplingInterval) {
     previousMillis += samplingInterval;
-    /* ANALOGREAD - do all analogReads() at the configured sampling interval */
+    // ANALOGREAD - do all analogReads() at the configured sampling interval //
     for (pin = 0; pin < TOTAL_PINS; pin++) {
       if (IS_PIN_ANALOG(pin) && pinConfig[pin] == ANALOG) {
         analogPin = PIN_TO_ANALOG(pin);
@@ -1303,5 +1303,5 @@ void loop()
         readAndReportData(query[i].addr, query[i].reg, query[i].bytes);
       }
     }
-  }
+  }*/
 }
