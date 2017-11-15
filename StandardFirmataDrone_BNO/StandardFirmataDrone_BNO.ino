@@ -745,6 +745,7 @@ void sysexCallback(byte command, byte argc, byte *argv)
       calculateStartingAngleCallback();
       setStartingAngle();
       break;
+    // Sysex to set the dumping factor
     case 0x1d:
       if (argc > 1) {
         int val = argv[0];
@@ -849,7 +850,7 @@ void ramp_down()
 
 void check_emergency_angle()
 {
-  if(eulerX>45 | eulerY>45)
+  if(abs(eulerX)>45 | abs(eulerY)>45)
   {
     timeToCalibrate_ = false;
     timeToStall_     = false;
@@ -1289,7 +1290,7 @@ void setup()
  *============================================================================*/
 void loop()
 {
-  byte pin, analogPin;
+  // byte pin, analogPin;
 
   /* DIGITALREAD - as fast as possible, check for changes and output them to the
    * FTDI buffer using Serial.print()  */
