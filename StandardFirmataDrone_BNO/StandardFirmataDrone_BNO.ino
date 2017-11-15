@@ -31,6 +31,7 @@
 #include <Firmata.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
+#include <utility/imumaths.h>
 #include <EEPROM.h>
 
 
@@ -47,14 +48,14 @@
 
 // the minimum interval for sampling analog input
 #define MINIMUM_SAMPLING_INTERVAL 10
-#define BNO055_SAMPLERATE_DELAY_MS (10)
+#define BNO055_SAMPLERATE_DELAY_MS (25)
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 
 //  Drone geometry initalization:
-//  assuming an equal force over all the motors, this has to be compensated by 
+//  assuming an equal force over all the motors, this has to be compensated by
 //  the arm applied by the single motor wrt to the different axes.
-double armX_front = 10; 
+double armX_front = 10;
 double armY_left  = 5;
 double armX_back  = 7;
 double armY_right = 5;
@@ -64,9 +65,29 @@ double armY_right = 5;
 //double correction_arm_6 = ;
 //double correction_arm_7 = ;
 
+
+// Energy Dump Method
+imu::Vector<3> angVelocity;
+float  angVelocityX = 0;
+float  angVelocityY = 0;
+float  angVelocityZ = 0;
+float  oldVelocityX = 0;
+float  oldVelocityY = 0;
+float  ZeroEnergyAngleX = 0;
+float  ZeroEnergyAngleY = 0;
+float  ZeroAngleZ = 0;
+bool startDumpBoolX;
+bool startDumpBoolY;
+bool startDumpBoolZ;
+// end of initialization for Energy Dump Method
+
+
 float eulerX = 0;
 float eulerY = 0;
 float eulerZ = 0;
+float oldEulerX = 0;
+float oldEulerY = 0;
+float oldEulerZ = 0;
 imu::Vector<3> euler;
 unsigned long mytimer = 0;
 unsigned long dt = 0;
@@ -85,7 +106,7 @@ unsigned long distanza_prima = 999;
 unsigned long distanza_dopo = 0;
 int counter = 0;
 int takeOffPower = 0;
-int numPedestals_ = 20; 
+int numPedestals_ = 20;
 int takeoffVec_[20];  //change both this numebrs together
 int counterDelay = 0;
 int value2 = 0;
@@ -679,7 +700,7 @@ void sysexCallback(byte command, byte argc, byte *argv)
       Firmata.write(END_SYSEX);
       break;
     //MY CASES
-    // Set all engines to a custom value.  
+    // Set all engines to a custom value.
     case 0x12:
       if (argc > 1) {
         int val = argv[0];
@@ -744,7 +765,7 @@ void sysexCallback(byte command, byte argc, byte *argv)
       calculateStartingAngleCallback();
       setStartingAngle();
       break;
-    
+
   }
 }
 
@@ -870,19 +891,19 @@ void getDistance(){
 void takeOff(){ //calibrazione pedestals
   counterDelay++;
   if(counterDelay > 50){
-    getDistance();  
+    getDistance();
     if (distanza_dopo < 20){ // Il drone non ha ancora raggiunto la quota di calibrazione
       if (distanza_dopo > distanza_prima) {
       //Nothing to do
       } else if(distanza_dopo <= distanza_prima) {
         takeOffPower = takeOffPower + 1;
-        } 
+        }
     } else if (distanza_dopo >= 20) { // Il drone ha superato la quota di calibrazione
       takeoffVec_[counter] = takeOffPower;
       counter ++;
       if (distanza_dopo > distanza_prima) {
         takeOffPower = takeOffPower - 1;
-        } 
+        }
       }
       // Aggiorno la distanza
       distanza_prima = distanza_dopo;
@@ -895,23 +916,62 @@ void takeOff(){ //calibrazione pedestals
     timeToTakeOff_ = false;
     ramp_down();
   }
-} 
+}
 
-void getAngles(){  
+void getAngles(){
   dt = (double)(millis() - mytimer);
   mytimer = millis();
   euler   = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-
+  
   eulerX = euler.z() - baseAngleX;
   eulerY = euler.y() - baseAngleY;
   eulerZ = euler.x() - baseAngleZ;
   //eulerX = euler.x();
   //eulerY = euler.y();
   //eulerZ = euler.z();
-
-  if(printValues_) printEnginesAndAngles();
   
+  if((oldEulerX>0) != (eulerX>0)) ZeroEnergyAngleX = 0;
+  if((oldEulerY>0) != (eulerY>0)) ZeroEnergyAngleY = 0;
+
+  oldEulerX = eulerX;
+  oldEulerY = eulerY;
+  oldEulerZ = eulerZ;
+  
+  if(printValues_) printEnginesAndAngles();
   delay(BNO055_SAMPLERATE_DELAY_MS);
+}
+
+void getAngularVelocity(){   //ask the BNO for angular speed
+  angVelocity   = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
+
+  angVelocityX = angVelocity.x();
+  angVelocityY = angVelocity.y();
+  angVelocityZ = angVelocity.z();
+
+}
+
+void checkVelocity(){     //check for angular inversion (Energy Dump Method)
+  if(-1<eulerX<1){ // this is to avoid that, if after the correction the drone goes on the other side, it find inverted correction without passing trough inverted velocities,
+    //that means that it will push towards death. TODO: adjust the reset window! [+1, -1]?
+    ZeroEnergyAngleX = 0;
+  }
+  if(-1<eulerY<1){ // this is to avoid that, if after the correction the drone goes on the other side, it find inverted correction without passing trough inverted velocities,
+    //that means that it will push towards death. TODO: adjust the reset window! [+1, -1]?
+    ZeroEnergyAngleY = 0;
+  }
+  if((oldVelocityX<0) != (angVelocityX<0))
+  {
+    //inversion has occurred, thus the drone it either in a rest/stall position OR it is going back to 0° position from a non equilibrium situation
+    ZeroEnergyAngleX = eulerX;
+  }
+  
+  if((oldVelocityY<0) != (angVelocityY<0))
+  {
+    //inversion has occurred, thus the drone it either in a rest/stall position OR it is going back to 0° position from a non equilibrium situation
+    ZeroEnergyAngleY = eulerY;
+  }
+  oldVelocityX=angVelocityX;
+  oldVelocityY=angVelocityY;
 }
 
 void initSensors()
@@ -929,7 +989,7 @@ void setEngine2To(int value){
   sbi(TCCR3A, COM3B1);
   OCR3B = value;
   pinState[2] = value;
-   
+
 }
 
 void setEngine3To(int value){
@@ -965,7 +1025,7 @@ void setEnginesTo(int value){
 }
 
 void setPedestalsTo(int value){
-  
+
   pedestals[0] = value;
   pedestals[1] = value;
   pedestals[2] = value;
@@ -973,7 +1033,7 @@ void setPedestalsTo(int value){
 }
 
 void setPedestalTo(int motor, int value){
-  
+
   if(motor == 2) pedestals[0] = value;
   if(motor == 3) pedestals[1] = value;
   if(motor == 6) pedestals[2] = value;
@@ -982,7 +1042,7 @@ void setPedestalTo(int motor, int value){
 
 void printEnginesAndAngles(){
   print_counter += 1;
-  if(print_counter == 10) {
+  if(print_counter == 1) {
     String theMessage = "";
     theMessage += String(pinState[2]);
     theMessage += " ";
@@ -996,16 +1056,20 @@ void printEnginesAndAngles(){
     theMessage += " ";
     theMessage += String(eulerY);
     theMessage += " ";
-    theMessage += String(eulerZ);
+    theMessage += String(angVelocityX);
+    theMessage += " ";
+    theMessage += String(angVelocityY);
+    theMessage += " ";
+    theMessage += String(ZeroEnergyAngleX);
+    theMessage += " ";
+    theMessage += String(ZeroEnergyAngleY);
     theMessage += " ";
     theMessage += String(dt);
-    theMessage += " ";
-    theMessage += String(distanza_dopo);
     /*theMessage += " ";
     theMessage += String(baseAngleY);
     theMessage += " ";
     theMessage += String(baseAngleZ);*/
-  
+
     Firmata.sendString(theMessage.c_str());
     print_counter = 0;
   }
@@ -1051,10 +1115,10 @@ void setStartingAngle(){
   theMessage += String(baseAngleZ);
   Firmata.sendString(theMessage.c_str());
   //digitalWrite(46, LOW);
-  
+
 }
 
-// Calculate the starting X and Y angle of the 
+// Calculate the starting X and Y angle of the
 // gyroscope when the drone still off.
 void calculateStartingAngle()
 {
@@ -1086,7 +1150,7 @@ void calculateStartingAngleCallback()
   // Writing on EEPRON
   // We write 3 times so we can check later if they are the same
   int eeAddress = 0;
-  for(int i=0; i < 3; i++){   
+  for(int i=0; i < 3; i++){
     EEPROM.put(eeAddress, baseAngleX);
     eeAddress += sizeof(float);
     EEPROM.put(eeAddress, baseAngleY);
@@ -1094,7 +1158,7 @@ void calculateStartingAngleCallback()
     EEPROM.put(eeAddress, baseAngleZ);
     eeAddress += sizeof(float);
   }
-  
+
   // Some logging
   String theMessage = "Writing on EEPRON angles: ";
   theMessage += String(baseAngleX);
@@ -1106,16 +1170,67 @@ void calculateStartingAngleCallback()
   digitalWrite(46, LOW);
 }
 
-void correctEnginesToStall(){ // ToDo: setEngine2To(takeOffPower+offset_2);
-  
+void correctEnginesToStall(){ 
   angleCorrectedX = eulerX;
   angleCorrectedY = eulerY;
-  
+  if (abs(eulerX) < abs(ZeroEnergyAngleX/2)){
+    //invert reaction
+    angleCorrectedX= -angleCorrectedX;
+  }
+
+  if (abs(eulerY) < abs(ZeroEnergyAngleY/2)){
+    //invert reaction
+    angleCorrectedY= -angleCorrectedY;
+  }
+
   // the initial value (eg 367) should be implemented as the current power + offset_motor (calculated trough calibration)
-  value2 = takeOffPower+offset_2+pedestals[0] - (int)(angleCorrectedX*2) + (int)(angleCorrectedY*2);
-  value3 = takeOffPower+offset_3+pedestals[1] + (int)(angleCorrectedX*2) + (int)(angleCorrectedY*2);
-  value6 = takeOffPower+offset_6+pedestals[2] - (int)(angleCorrectedX*2) - (int)(angleCorrectedY*2);
-  value7 = takeOffPower+offset_7+pedestals[3] + (int)(angleCorrectedX*2) - (int)(angleCorrectedY*2);  
+  /*value2 = takeOffPower+offset_2+pedestals[0] - (int)angleCorrectedX + (int)angleCorrectedY;
+  value3 = takeOffPower+offset_3+pedestals[1] + (int)angleCorrectedX + (int)angleCorrectedY;
+  value6 = takeOffPower+offset_6+pedestals[2] - (int)angleCorrectedX - (int)angleCorrectedY;
+  value7 = takeOffPower+offset_7+pedestals[3] + (int)angleCorrectedX - (int)angleCorrectedY;*/
+
+  // Versione semplificata
+  value2 = pedestals[0] - (int)angleCorrectedX + (int)angleCorrectedY;
+  value3 = pedestals[1] + (int)angleCorrectedX + (int)angleCorrectedY;
+  value6 = pedestals[2] - (int)angleCorrectedX - (int)angleCorrectedY;
+  value7 = pedestals[3] + (int)angleCorrectedX - (int)angleCorrectedY;
+  
+  /*double angleFactor = cos(kalAlCorX * PI / 180.0) * cos(kalAlCorY * PI / 180.0);
+  double deltaForce = weight/angleFactor - ((value2+value3+value6+value7)*Fstep) ;
+  deltaW = int(deltaForce / (4 * Fstep));
+
+  value2 += deltaW;
+  value3 += deltaW;
+  value6 += deltaW;
+  value7 += deltaW;
+
+  int value2 = stallPow2_ - (int)compAngleX + (int)compAngleY;
+  int value3 = stallPow3_ + (int)compAngleX + (int)compAngleY;
+  int value6 = stallPow6_ + (int)compAngleX - (int)compAngleY;
+  int value7 = stallPow7_ - (int)compAngleX - (int)compAngleY;*/
+
+  setEngine2To(value2);
+  setEngine3To(value3);
+  setEngine6To(value6);
+  setEngine7To(value7);
+
+}
+
+void correctErnergyToStall(){
+
+}
+
+
+void correctEnginesToStall_sqrt(){ // ToDo: setEngine2To(takeOffPower+offset_2);
+
+  angleCorrectedX = eulerX;
+  angleCorrectedY = eulerY;
+
+  // the initial value (eg 367) should be implemented as the current power + offset_motor (calculated trough calibration)
+  value2 = takeOffPower+offset_2+pedestals[0] - (int)sqrt(angleCorrectedX) + (int)sqrt(angleCorrectedY);
+  value3 = takeOffPower+offset_3+pedestals[1] + (int)sqrt(angleCorrectedX) + (int)sqrt(angleCorrectedY);
+  value6 = takeOffPower+offset_6+pedestals[2] - (int)sqrt(angleCorrectedX) - (int)sqrt(angleCorrectedY);
+  value7 = takeOffPower+offset_7+pedestals[3] + (int)sqrt(angleCorrectedX) - (int)sqrt(angleCorrectedY);
 
   /*double angleFactor = cos(kalAlCorX * PI / 180.0) * cos(kalAlCorY * PI / 180.0);
   double deltaForce = weight/angleFactor - ((value2+value3+value6+value7)*Fstep) ;
@@ -1154,7 +1269,7 @@ void startUpcalibration()//check motors positions
       offset_6 = offset_6 - 1;
       offset_3 = offset_3 + 1;
       offset_7 = offset_7 + 1;
-    } 
+    }
     if(meanX < 1 && meanY < 1 && meanY > -1){
       offset_3 = offset_3 - 1;
       offset_7 = offset_7 - 1;
@@ -1166,18 +1281,18 @@ void startUpcalibration()//check motors positions
       offset_7 = offset_7 - 1;
       offset_2 = offset_2 + 1;
       offset_3 = offset_3 + 1;
-    } 
+    }
     if(meanX < 1 && meanX > -1 && meanY < 1){
       offset_2 = offset_2 - 1;
       offset_3 = offset_3 - 1;
       offset_7 = offset_7 + 1;
       offset_6 = offset_6 + 1;
     }
-      
+
     if (meanX > 1 && meanY > 1){ //check which motor is pushing too much
       offset_6 = offset_6 - 1;
       offset_3 = offset_3 + 1;
-    } 
+    }
     if(meanX > 1 && meanY < 1){
       offset_2 = offset_2 - 1;
       offset_7 = offset_7 + 1;
@@ -1185,11 +1300,11 @@ void startUpcalibration()//check motors positions
     if(meanX < 1 && meanY > 1){
       offset_7 = offset_7 - 1;
       offset_2 = offset_2 + 1;
-    } 
+    }
     if(meanX < 1 && meanY < 1){
       offset_3 = offset_3 - 1;
       offset_6 = offset_6 + 1;
-    } 
+    }
     setEngine6To(calibration_power+offset_6);//set motors values
     setEngine7To(calibration_power+offset_7);
     setEngine2To(calibration_power+offset_2);
@@ -1199,9 +1314,9 @@ void startUpcalibration()//check motors positions
           calibration_power = calibration_power +1;
     }
     //increase power for the next loop
-        
+
     delay(500);
-      
+
     getDistance();
     if (distanza_dopo > 5){ // implememting the distance sensor (ToDo: is it in cm?)
       timeToCalibrate_ = false;
@@ -1272,36 +1387,38 @@ void loop()
 
   /* DIGITALREAD - as fast as possible, check for changes and output them to the
    * FTDI buffer using Serial.print()  */
-  //checkDigitalInputs();
+  checkDigitalInputs();
 
   /* STREAMREAD - processing incoming messagse as soon as possible, while still
    * checking digital inputs.  */
   while (Firmata.available()) {
     Firmata.processInput();
   };
-  
+
   getAngles();
-  if(timeToCalibrate_) startUpcalibration();
-  if(timeToTakeOff_) takeOff();
+  getAngularVelocity();
+  checkVelocity();
+  //if(timeToCalibrate_) startUpcalibration();
+  //if(timeToTakeOff_) takeOff();
   if(timeToStall_) correctEnginesToStall();
 
-  /*currentMillis = millis();
-  if (currentMillis - previousMillis > samplingInterval) {
-    previousMillis += samplingInterval;
-    // ANALOGREAD - do all analogReads() at the configured sampling interval //
-    for (pin = 0; pin < TOTAL_PINS; pin++) {
-      if (IS_PIN_ANALOG(pin) && pinConfig[pin] == ANALOG) {
-        analogPin = PIN_TO_ANALOG(pin);
-        if (analogInputsToReport & (1 << analogPin)) {
-          Firmata.sendAnalog(analogPin, analogRead(analogPin));
-        }
-      }
-    }
-    // report i2c data for all device with read continuous mode enabled
-    if (queryIndex > -1) {
-      for (byte i = 0; i < queryIndex + 1; i++) {
-        readAndReportData(query[i].addr, query[i].reg, query[i].bytes);
-      }
-    }
-  }*/
+  // currentMillis = millis();
+  // if (currentMillis - previousMillis > samplingInterval) {
+  //   previousMillis += samplingInterval;
+  //   /* ANALOGREAD - do all analogReads() at the configured sampling interval */
+  //   for (pin = 0; pin < TOTAL_PINS; pin++) {
+  //     if (IS_PIN_ANALOG(pin) && pinConfig[pin] == ANALOG) {
+  //       analogPin = PIN_TO_ANALOG(pin);
+  //       if (analogInputsToReport & (1 << analogPin)) {
+  //         Firmata.sendAnalog(analogPin, analogRead(analogPin));
+  //       }
+  //     }
+  //   }
+  //   // report i2c data for all device with read continuous mode enabled
+  //   if (queryIndex > -1) {
+  //     for (byte i = 0; i < queryIndex + 1; i++) {
+  //       readAndReportData(query[i].addr, query[i].reg, query[i].bytes);
+  //     }
+  //   }
+  // }
 }
