@@ -115,6 +115,7 @@ int value6 = 0;
 int value7 = 0;
 double angleCorrectedX = 0;
 double angleCorrectedY = 0;
+double k1 = 0;
 
 int pedestals[4];
 
@@ -765,7 +766,14 @@ void sysexCallback(byte command, byte argc, byte *argv)
       calculateStartingAngleCallback();
       setStartingAngle();
       break;
-
+    // Sysex to set the dumping factor
+    case 0x1d:
+      if (argc > 1) {
+        int val = argv[0];
+        val |= (argv[1] << 7);
+        k1=val;
+      }
+    break;
   }
 }
 
@@ -861,6 +869,20 @@ void ramp_down()
   }
 }
 
+void check_emergency_angle()
+{
+  if(abs(eulerX)>45 | abs(eulerY)>45)
+  {
+    timeToCalibrate_ = false;
+    timeToStall_     = false;
+    timeToTakeOff_   = false;
+    setEngine2To(260);
+    setEngine3To(260);
+    setEngine6To(260);
+    setEngine7To(260);
+  }
+}
+
 void getDistance(){
   // Calcolo angolo totale rispetto alla verticale
   double angoloTot = acos(cos(eulerX * 71 / 4068) * cos(eulerY * 71 / 4068));
@@ -922,21 +944,21 @@ void getAngles(){
   dt = (double)(millis() - mytimer);
   mytimer = millis();
   euler   = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-  
+
   eulerX = euler.z() - baseAngleX;
   eulerY = euler.y() - baseAngleY;
   eulerZ = euler.x() - baseAngleZ;
   //eulerX = euler.x();
   //eulerY = euler.y();
   //eulerZ = euler.z();
-  
+
   if((oldEulerX>0) != (eulerX>0)) ZeroEnergyAngleX = 0;
   if((oldEulerY>0) != (eulerY>0)) ZeroEnergyAngleY = 0;
 
   oldEulerX = eulerX;
   oldEulerY = eulerY;
   oldEulerZ = eulerZ;
-  
+
   if(printValues_) printEnginesAndAngles();
   delay(BNO055_SAMPLERATE_DELAY_MS);
 }
@@ -964,7 +986,7 @@ void checkVelocity(){     //check for angular inversion (Energy Dump Method)
     //inversion has occurred, thus the drone it either in a rest/stall position OR it is going back to 0° position from a non equilibrium situation
     ZeroEnergyAngleX = eulerX;
   }
-  
+
   if((oldVelocityY<0) != (angVelocityY<0))
   {
     //inversion has occurred, thus the drone it either in a rest/stall position OR it is going back to 0° position from a non equilibrium situation
@@ -1170,7 +1192,7 @@ void calculateStartingAngleCallback()
   digitalWrite(46, LOW);
 }
 
-void correctEnginesToStall(){ 
+void correctEnginesToStall(){
   angleCorrectedX = eulerX;
   angleCorrectedY = eulerY;
   if (abs(eulerX) < abs(ZeroEnergyAngleX/2)){
@@ -1194,7 +1216,7 @@ void correctEnginesToStall(){
   value3 = pedestals[1] + (int)angleCorrectedX + (int)angleCorrectedY;
   value6 = pedestals[2] - (int)angleCorrectedX - (int)angleCorrectedY;
   value7 = pedestals[3] + (int)angleCorrectedX - (int)angleCorrectedY;
-  
+
   /*double angleFactor = cos(kalAlCorX * PI / 180.0) * cos(kalAlCorY * PI / 180.0);
   double deltaForce = weight/angleFactor - ((value2+value3+value6+value7)*Fstep) ;
   deltaW = int(deltaForce / (4 * Fstep));
@@ -1383,7 +1405,7 @@ void setup()
  *============================================================================*/
 void loop()
 {
-  byte pin, analogPin;
+  // byte pin, analogPin;
 
   /* DIGITALREAD - as fast as possible, check for changes and output them to the
    * FTDI buffer using Serial.print()  */
@@ -1396,6 +1418,7 @@ void loop()
   };
 
   getAngles();
+  check_emergency_angle();
   getAngularVelocity();
   checkVelocity();
   //if(timeToCalibrate_) startUpcalibration();
