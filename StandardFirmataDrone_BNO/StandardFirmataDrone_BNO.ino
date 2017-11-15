@@ -52,9 +52,9 @@
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 
 //  Drone geometry initalization:
-//  assuming an equal force over all the motors, this has to be compensated by 
+//  assuming an equal force over all the motors, this has to be compensated by
 //  the arm applied by the single motor wrt to the different axes.
-double armX_front = 10; 
+double armX_front = 10;
 double armY_left  = 5;
 double armX_back  = 7;
 double armY_right = 5;
@@ -85,7 +85,7 @@ unsigned long distanza_prima = 999;
 unsigned long distanza_dopo = 0;
 int counter = 0;
 int takeOffPower = 0;
-int numPedestals_ = 20; 
+int numPedestals_ = 20;
 int takeoffVec_[20];  //change both this numebrs together
 int counterDelay = 0;
 int value2 = 0;
@@ -94,6 +94,7 @@ int value6 = 0;
 int value7 = 0;
 double angleCorrectedX = 0;
 double angleCorrectedY = 0;
+double k1 = 0;
 
 int pedestals[4];
 
@@ -679,7 +680,7 @@ void sysexCallback(byte command, byte argc, byte *argv)
       Firmata.write(END_SYSEX);
       break;
     //MY CASES
-    // Set all engines to a custom value.  
+    // Set all engines to a custom value.
     case 0x12:
       if (argc > 1) {
         int val = argv[0];
@@ -744,7 +745,13 @@ void sysexCallback(byte command, byte argc, byte *argv)
       calculateStartingAngleCallback();
       setStartingAngle();
       break;
-    
+    case 0x1d:
+      if (argc > 1) {
+        int val = argv[0];
+        val |= (argv[1] << 7);
+        k1=val;
+      }
+    break;
   }
 }
 
@@ -840,6 +847,20 @@ void ramp_down()
   }
 }
 
+void check_emergency_angle()
+{
+  if(eulerX>45 | eulerY>45)
+  {
+    timeToCalibrate_ = false;
+    timeToStall_     = false;
+    timeToTakeOff_   = false;
+    setEngine2To(260);
+    setEngine3To(260);
+    setEngine6To(260);
+    setEngine7To(260);
+  }
+}
+
 void getDistance(){
   // Calcolo angolo totale rispetto alla verticale
   double angoloTot = acos(cos(eulerX * 71 / 4068) * cos(eulerY * 71 / 4068));
@@ -870,19 +891,19 @@ void getDistance(){
 void takeOff(){ //calibrazione pedestals
   counterDelay++;
   if(counterDelay > 50){
-    getDistance();  
+    getDistance();
     if (distanza_dopo < 20){ // Il drone non ha ancora raggiunto la quota di calibrazione
       if (distanza_dopo > distanza_prima) {
       //Nothing to do
       } else if(distanza_dopo <= distanza_prima) {
         takeOffPower = takeOffPower + 1;
-        } 
+        }
     } else if (distanza_dopo >= 20) { // Il drone ha superato la quota di calibrazione
       takeoffVec_[counter] = takeOffPower;
       counter ++;
       if (distanza_dopo > distanza_prima) {
         takeOffPower = takeOffPower - 1;
-        } 
+        }
       }
       // Aggiorno la distanza
       distanza_prima = distanza_dopo;
@@ -895,9 +916,9 @@ void takeOff(){ //calibrazione pedestals
     timeToTakeOff_ = false;
     ramp_down();
   }
-} 
+}
 
-void getAngles(){  
+void getAngles(){
   dt = (double)(millis() - mytimer);
   mytimer = millis();
   euler   = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
@@ -910,7 +931,7 @@ void getAngles(){
   //eulerZ = euler.z();
 
   if(printValues_) printEnginesAndAngles();
-  
+
   delay(BNO055_SAMPLERATE_DELAY_MS);
 }
 
@@ -929,7 +950,7 @@ void setEngine2To(int value){
   sbi(TCCR3A, COM3B1);
   OCR3B = value;
   pinState[2] = value;
-   
+
 }
 
 void setEngine3To(int value){
@@ -965,7 +986,7 @@ void setEnginesTo(int value){
 }
 
 void setPedestalsTo(int value){
-  
+
   pedestals[0] = value;
   pedestals[1] = value;
   pedestals[2] = value;
@@ -973,7 +994,7 @@ void setPedestalsTo(int value){
 }
 
 void setPedestalTo(int motor, int value){
-  
+
   if(motor == 2) pedestals[0] = value;
   if(motor == 3) pedestals[1] = value;
   if(motor == 6) pedestals[2] = value;
@@ -1005,7 +1026,7 @@ void printEnginesAndAngles(){
     theMessage += String(baseAngleY);
     theMessage += " ";
     theMessage += String(baseAngleZ);*/
-  
+
     Firmata.sendString(theMessage.c_str());
     print_counter = 0;
   }
@@ -1051,10 +1072,10 @@ void setStartingAngle(){
   theMessage += String(baseAngleZ);
   Firmata.sendString(theMessage.c_str());
   //digitalWrite(46, LOW);
-  
+
 }
 
-// Calculate the starting X and Y angle of the 
+// Calculate the starting X and Y angle of the
 // gyroscope when the drone still off.
 void calculateStartingAngle()
 {
@@ -1086,7 +1107,7 @@ void calculateStartingAngleCallback()
   // Writing on EEPRON
   // We write 3 times so we can check later if they are the same
   int eeAddress = 0;
-  for(int i=0; i < 3; i++){   
+  for(int i=0; i < 3; i++){
     EEPROM.put(eeAddress, baseAngleX);
     eeAddress += sizeof(float);
     EEPROM.put(eeAddress, baseAngleY);
@@ -1094,7 +1115,7 @@ void calculateStartingAngleCallback()
     EEPROM.put(eeAddress, baseAngleZ);
     eeAddress += sizeof(float);
   }
-  
+
   // Some logging
   String theMessage = "Writing on EEPRON angles: ";
   theMessage += String(baseAngleX);
@@ -1107,15 +1128,15 @@ void calculateStartingAngleCallback()
 }
 
 void correctEnginesToStall(){ // ToDo: setEngine2To(takeOffPower+offset_2);
-  
+
   angleCorrectedX = eulerX;
   angleCorrectedY = eulerY;
-  
+
   // the initial value (eg 367) should be implemented as the current power + offset_motor (calculated trough calibration)
   value2 = takeOffPower+offset_2+pedestals[0] - (int)(angleCorrectedX*2) + (int)(angleCorrectedY*2);
   value3 = takeOffPower+offset_3+pedestals[1] + (int)(angleCorrectedX*2) + (int)(angleCorrectedY*2);
   value6 = takeOffPower+offset_6+pedestals[2] - (int)(angleCorrectedX*2) - (int)(angleCorrectedY*2);
-  value7 = takeOffPower+offset_7+pedestals[3] + (int)(angleCorrectedX*2) - (int)(angleCorrectedY*2);  
+  value7 = takeOffPower+offset_7+pedestals[3] + (int)(angleCorrectedX*2) - (int)(angleCorrectedY*2);
 
   /*double angleFactor = cos(kalAlCorX * PI / 180.0) * cos(kalAlCorY * PI / 180.0);
   double deltaForce = weight/angleFactor - ((value2+value3+value6+value7)*Fstep) ;
@@ -1154,7 +1175,7 @@ void startUpcalibration()//check motors positions
       offset_6 = offset_6 - 1;
       offset_3 = offset_3 + 1;
       offset_7 = offset_7 + 1;
-    } 
+    }
     if(meanX < 1 && meanY < 1 && meanY > -1){
       offset_3 = offset_3 - 1;
       offset_7 = offset_7 - 1;
@@ -1166,18 +1187,18 @@ void startUpcalibration()//check motors positions
       offset_7 = offset_7 - 1;
       offset_2 = offset_2 + 1;
       offset_3 = offset_3 + 1;
-    } 
+    }
     if(meanX < 1 && meanX > -1 && meanY < 1){
       offset_2 = offset_2 - 1;
       offset_3 = offset_3 - 1;
       offset_7 = offset_7 + 1;
       offset_6 = offset_6 + 1;
     }
-      
+
     if (meanX > 1 && meanY > 1){ //check which motor is pushing too much
       offset_6 = offset_6 - 1;
       offset_3 = offset_3 + 1;
-    } 
+    }
     if(meanX > 1 && meanY < 1){
       offset_2 = offset_2 - 1;
       offset_7 = offset_7 + 1;
@@ -1185,11 +1206,11 @@ void startUpcalibration()//check motors positions
     if(meanX < 1 && meanY > 1){
       offset_7 = offset_7 - 1;
       offset_2 = offset_2 + 1;
-    } 
+    }
     if(meanX < 1 && meanY < 1){
       offset_3 = offset_3 - 1;
       offset_6 = offset_6 + 1;
-    } 
+    }
     setEngine6To(calibration_power+offset_6);//set motors values
     setEngine7To(calibration_power+offset_7);
     setEngine2To(calibration_power+offset_2);
@@ -1199,9 +1220,9 @@ void startUpcalibration()//check motors positions
           calibration_power = calibration_power +1;
     }
     //increase power for the next loop
-        
+
     delay(500);
-      
+
     getDistance();
     if (distanza_dopo > 5){ // implememting the distance sensor (ToDo: is it in cm?)
       timeToCalibrate_ = false;
@@ -1279,8 +1300,9 @@ void loop()
   while (Firmata.available()) {
     Firmata.processInput();
   };
-  
+
   getAngles();
+  check_emergency_angle();
   if(timeToCalibrate_) startUpcalibration();
   if(timeToTakeOff_) takeOff();
   if(timeToStall_) correctEnginesToStall();
