@@ -81,7 +81,6 @@ bool startDumpBoolY;
 bool startDumpBoolZ;
 // end of initialization for Energy Dump Method
 
-
 float eulerX = 0;
 float eulerY = 0;
 float eulerZ = 0;
@@ -90,6 +89,10 @@ float oldEulerY = 0;
 float oldEulerZ = 0;
 imu::Vector<3> euler;
 unsigned long mytimer = 0;
+unsigned long timerPing = 0;
+unsigned long timerPingOld = 0;
+int pingLed = 48;
+bool pingEnable = false;
 unsigned long dt = 0;
 int calibration_power = 0;
 int offset_6 = 0;
@@ -115,7 +118,7 @@ int value6 = 0;
 int value7 = 0;
 double angleCorrectedX = 0;
 double angleCorrectedY = 0;
-double k1 = 0;
+float k1 = 2;
 
 int pedestals[4];
 
@@ -774,6 +777,11 @@ void sysexCallback(byte command, byte argc, byte *argv)
         k1=val;
       }
     break;
+    // Sysex to check connection
+    case 0x1e:
+      pingEnable = true;
+      break;
+    break;
   }
 }
 
@@ -880,6 +888,18 @@ void check_emergency_angle()
     setEngine3To(260);
     setEngine6To(260);
     setEngine7To(260);
+  }
+}
+
+void check_ping() {
+timerPingOld = (double)(millis() - timerPing);
+  if(timerPingOld>5000) {
+    for(int i = 0; i < 5; i++){
+      digitalWrite(pingLed, HIGH);
+      delay(200);
+      digitalWrite(pingLed, LOW);
+      delay(200);
+    }
   }
 }
 
@@ -1064,7 +1084,7 @@ void setPedestalTo(int motor, int value){
 
 void printEnginesAndAngles(){
   print_counter += 1;
-  if(print_counter == 1) {
+  if(print_counter == 10) {
     String theMessage = "";
     theMessage += String(pinState[2]);
     theMessage += " ";
@@ -1212,61 +1232,10 @@ void correctEnginesToStall(){
   value7 = takeOffPower+offset_7+pedestals[3] + (int)angleCorrectedX - (int)angleCorrectedY;*/
 
   // Versione semplificata
-  value2 = pedestals[0] - (int)angleCorrectedX + (int)angleCorrectedY;
-  value3 = pedestals[1] + (int)angleCorrectedX + (int)angleCorrectedY;
-  value6 = pedestals[2] - (int)angleCorrectedX - (int)angleCorrectedY;
-  value7 = pedestals[3] + (int)angleCorrectedX - (int)angleCorrectedY;
-
-  /*double angleFactor = cos(kalAlCorX * PI / 180.0) * cos(kalAlCorY * PI / 180.0);
-  double deltaForce = weight/angleFactor - ((value2+value3+value6+value7)*Fstep) ;
-  deltaW = int(deltaForce / (4 * Fstep));
-
-  value2 += deltaW;
-  value3 += deltaW;
-  value6 += deltaW;
-  value7 += deltaW;
-
-  int value2 = stallPow2_ - (int)compAngleX + (int)compAngleY;
-  int value3 = stallPow3_ + (int)compAngleX + (int)compAngleY;
-  int value6 = stallPow6_ + (int)compAngleX - (int)compAngleY;
-  int value7 = stallPow7_ - (int)compAngleX - (int)compAngleY;*/
-
-  setEngine2To(value2);
-  setEngine3To(value3);
-  setEngine6To(value6);
-  setEngine7To(value7);
-
-}
-
-void correctErnergyToStall(){
-
-}
-
-
-void correctEnginesToStall_sqrt(){ // ToDo: setEngine2To(takeOffPower+offset_2);
-
-  angleCorrectedX = eulerX;
-  angleCorrectedY = eulerY;
-
-  // the initial value (eg 367) should be implemented as the current power + offset_motor (calculated trough calibration)
-  value2 = takeOffPower+offset_2+pedestals[0] - (int)sqrt(angleCorrectedX) + (int)sqrt(angleCorrectedY);
-  value3 = takeOffPower+offset_3+pedestals[1] + (int)sqrt(angleCorrectedX) + (int)sqrt(angleCorrectedY);
-  value6 = takeOffPower+offset_6+pedestals[2] - (int)sqrt(angleCorrectedX) - (int)sqrt(angleCorrectedY);
-  value7 = takeOffPower+offset_7+pedestals[3] + (int)sqrt(angleCorrectedX) - (int)sqrt(angleCorrectedY);
-
-  /*double angleFactor = cos(kalAlCorX * PI / 180.0) * cos(kalAlCorY * PI / 180.0);
-  double deltaForce = weight/angleFactor - ((value2+value3+value6+value7)*Fstep) ;
-  deltaW = int(deltaForce / (4 * Fstep));
-
-  value2 += deltaW;
-  value3 += deltaW;
-  value6 += deltaW;
-  value7 += deltaW;
-
-  int value2 = stallPow2_ - (int)compAngleX + (int)compAngleY;
-  int value3 = stallPow3_ + (int)compAngleX + (int)compAngleY;
-  int value6 = stallPow6_ + (int)compAngleX - (int)compAngleY;
-  int value7 = stallPow7_ - (int)compAngleX - (int)compAngleY;*/
+  value2 = pedestals[0] - (int)angleCorrectedX + (int)angleCorrectedY + k1*(+ (int)angVelocityX - (int)angVelocityY);
+  value3 = pedestals[1] + (int)angleCorrectedX + (int)angleCorrectedY + k1*(- (int)angVelocityX - (int)angVelocityY);
+  value6 = pedestals[2] - (int)angleCorrectedX - (int)angleCorrectedY + k1*(+ (int)angVelocityX + (int)angVelocityY);
+  value7 = pedestals[3] + (int)angleCorrectedX - (int)angleCorrectedY + k1*(- (int)angVelocityX + (int)angVelocityY);
 
   setEngine2To(value2);
   setEngine3To(value3);
@@ -1362,6 +1331,8 @@ void startUpcalibration()//check motors positions
 void setup()
 {
   // Led on during Setup function
+  pinMode(pingLed, OUTPUT);
+  digitalWrite(pingLed, HIGH);
   pinMode(46, OUTPUT);
   digitalWrite(46, HIGH);
   Firmata.setFirmwareVersion(FIRMATA_MAJOR_VERSION, FIRMATA_MINOR_VERSION);
@@ -1397,6 +1368,7 @@ void setup()
   pedestals[3] = 260;
   // Led off at the end of Setup function
   digitalWrite(46, LOW);
+  digitalWrite(pingLed, LOW);
   timer = millis();
 }
 
@@ -1415,12 +1387,15 @@ void loop()
    * checking digital inputs.  */
   while (Firmata.available()) {
     Firmata.processInput();
+    timerPing = millis();
   };
 
+  
+  if(pingEnable) check_ping();
   getAngles();
   check_emergency_angle();
   getAngularVelocity();
-  checkVelocity();
+  //checkVelocity();
   //if(timeToCalibrate_) startUpcalibration();
   //if(timeToTakeOff_) takeOff();
   if(timeToStall_) correctEnginesToStall();
