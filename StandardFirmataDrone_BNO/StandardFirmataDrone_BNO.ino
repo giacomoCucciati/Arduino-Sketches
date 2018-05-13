@@ -774,7 +774,7 @@ void sysexCallback(byte command, byte argc, byte *argv)
       if (argc > 1) {
         int val = argv[0];
         val |= (argv[1] << 7);
-        k1=val;
+        k1=val/10;
       }
     break;
     // Sysex to check connection
@@ -1106,7 +1106,8 @@ void printEnginesAndAngles(){
     theMessage += " ";
     theMessage += String(ZeroEnergyAngleY);
     theMessage += " ";
-    theMessage += String(dt);
+    //theMessage += String(dt);
+    theMessage += String(k1);
     /*theMessage += " ";
     theMessage += String(baseAngleY);
     theMessage += " ";
